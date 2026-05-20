@@ -1,0 +1,364 @@
+*&---------------------------------------------------------------------*
+*& Report ZHR_SST_A1_CHECK_3
+*&---------------------------------------------------------------------*
+*& The report has following functionalities
+*& Send Reminder when the A1 request in A1 manager still in status DRAFT after X days
+*& Send Reminder when cancelled / changed Concur Request hasn't been reflected in
+*& A1 Manager after X days
+*&---------------------------------------------------------------------*
+REPORT zhr_sst_a1_check_3.
+
+* Data definition
+DATA gt_a1_hdr_draft TYPE TABLE OF /nyx/a1_hdr.
+DATA gt_a1_hist_modif TYPE TABLE OF /nyx/a1_hist.
+DATA gs_a1_hdr TYPE /nyx/a1_hdr.
+DATA gs_a1_hist TYPE /nyx/a1_hist.
+DATA gv_dat TYPE datum.
+DATA gt_a1_cgen TYPE TABLE OF /nyx/a1_cgen.
+DATA gt_req22 TYPE TABLE OF /nyx/sccoreq22v4.
+
+*--------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK a WITH FRAME TITLE TEXT-010.
+PARAMETERS p_tage TYPE i DEFAULT '7' OBLIGATORY.
+PARAMETERS p_draft AS CHECKBOX DEFAULT 'X'.
+PARAMETERS p_modif AS CHECKBOX DEFAULT 'X'.
+PARAMETERS p_mail AS CHECKBOX.
+SELECTION-SCREEN END OF BLOCK a.
+
+
+*--------------------------------------------------------------------*
+INITIALIZATION.
+*--------------------------------------------------------------------*
+  CLEAR: gt_req22, gt_a1_hdr_draft.
+
+  SELECT * FROM /nyx/a1_cgen                            "#EC CI_NOWHERE
+    INTO TABLE gt_a1_cgen.                           "#EC "#EC CI_SUBRC
+
+*--------------------------------------------------------------------*
+START-OF-SELECTION.
+*--------------------------------------------------------------------*
+  gv_dat = sy-datum - p_tage.
+
+  IF p_draft IS NOT INITIAL.
+    SELECT * FROM /nyx/a1_hdr
+      INTO TABLE gt_a1_hdr_draft                   "#EC "#EC CI_NOFIRST
+       WHERE status = 'DRAFT' .           "#EC CI_NOFIELD "#EC CI_SUBRC
+  ENDIF.
+
+  IF p_modif IS NOT INITIAL.
+    SELECT * FROM /nyx/sccoreq22v4 INTO TABLE gt_req22 WHERE change_type = 'CHANGE'
+      OR change_type = 'DEL'.
+    DELETE gt_req22 WHERE eval_date <> gv_dat.
+  ENDIF.
+
+  IF gt_a1_hdr_draft IS NOT INITIAL OR gt_req22 IS NOT INITIAL.
+    PERFORM check_data.
+  ENDIF.
+  PERFORM display_result.
+
+END-OF-SELECTION.
+*&---------------------------------------------------------------------*
+*&      Form  CHECK_DATA
+*&---------------------------------------------------------------------*
+*       text
+FORM check_data .
+  DATA lt_a1_hist TYPE TABLE OF /nyx/a1_hist.
+  DATA ls_a1_hdr TYPE TABLE OF /nyx/a1_hdr.
+  DATA ls_req22 TYPE /nyx/sccoreq22v4.
+
+  IF p_draft IS NOT INITIAL.
+    CLEAR gs_a1_hdr.
+    LOOP AT gt_a1_hdr_draft INTO gs_a1_hdr.
+      REFRESH: lt_a1_hist.
+      SELECT * FROM /nyx/a1_hist INTO TABLE lt_a1_hist "#EC CI_ALL_FIELDS_NEEDED
+        WHERE a1mnr = gs_a1_hdr-a1mnr. "#EC "#EC CI_NOFIRST "#EC CI_SUBRC
+      SORT lt_a1_hist BY prtnr DESCENDING.    "#EC CI_ALL_FIELDS_NEEDED
+      CLEAR: gs_a1_hist.
+      READ TABLE lt_a1_hist INTO gs_a1_hist INDEX 1. "#EC CI_ALL_FIELDS_NEEDED
+      IF gs_a1_hist-date_from = gv_dat.       "#EC CI_ALL_FIELDS_NEEDED
+        IF p_mail IS NOT INITIAL.
+          PERFORM send_mail_draft.
+        ENDIF.
+      ELSE.
+        DELETE TABLE gt_a1_hdr_draft FROM gs_a1_hdr.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+
+  IF p_modif IS NOT INITIAL.
+    DATA ls_req21 TYPE /nyx/sccoreq21v4.
+    CLEAR: gt_a1_hist_modif, lt_a1_hist, ls_req22.
+    LOOP AT gt_req22 INTO ls_req22.
+      CLEAR: ls_req21, ls_a1_hdr.
+      SELECT SINGLE * FROM /nyx/sccoreq21v4 INTO ls_req21 WHERE doc_id = ls_req22-doc_id
+        AND proc_value <> ''.
+      IF sy-subrc = 0.
+        REFRESH: lt_a1_hist.
+        SELECT * FROM /nyx/a1_hist INTO TABLE lt_a1_hist "#EC CI_ALL_FIELDS_NEEDED
+          WHERE a1mnr = ls_req21-proc_value. "#EC "#EC CI_NOFIRST "#EC CI_SUBRC
+        SORT lt_a1_hist BY prtnr DESCENDING.  "#EC CI_ALL_FIELDS_NEEDED
+        CLEAR: gs_a1_hist.
+        READ TABLE lt_a1_hist INTO gs_a1_hist INDEX 1. "#EC CI_ALL_FIELDS_NEEDED
+        CASE ls_req22-change_type.
+          WHEN 'CHANGE'.
+            IF gs_a1_hist-date_from = ls_req22-eval_date.
+*            no change made in A1 Manager
+              IF p_mail IS NOT INITIAL.
+                PERFORM send_mail_modif.
+              ENDIF.
+              APPEND gs_a1_hist TO gt_a1_hist_modif.
+            ELSE.
+              DELETE TABLE gt_req22 FROM ls_req22.
+            ENDIF.
+          WHEN 'DEL'.
+            IF gs_a1_hist-status <> 'DELETED'.
+              IF p_mail IS NOT INITIAL.
+                PERFORM send_mail_modif.
+              ENDIF.
+              APPEND gs_a1_hist TO gt_a1_hist_modif.
+            ELSE.
+              DELETE TABLE gt_req22 FROM ls_req22.
+            ENDIF.
+          WHEN OTHERS.
+        ENDCASE.
+      ELSE.
+        DELETE TABLE gt_req22 FROM ls_req22.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+ENDFORM. "check_data
+*&---------------------------------------------------------------------*
+*&      Form  SEND_MAIL_DRAFT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM send_mail_modif.
+  DATA ls_message TYPE bapiret2.
+  DATA lt_key_value_param TYPE /nyx/a1_key_value_param_tt.
+  DATA ls_kv TYPE /nyx/a1_key_val_param_s.
+  DATA lv_success TYPE char1.
+  DATA lv_recipient TYPE comm_id_long.
+  DATA ls_a1_cgen TYPE /nyx/a1_cgen.
+  DATA ls_bapiret1 TYPE bapiret1.
+  DATA ls_a1_hdr TYPE /nyx/a1_hdr.
+  DATA lt_p0105 TYPE TABLE OF p0105.
+  DATA ls_p0105 TYPE p0105.
+
+  SELECT SINGLE * FROM /nyx/a1_hdr INTO ls_a1_hdr WHERE a1mnr = gs_a1_hist-a1mnr.
+  IF ls_a1_hdr IS NOT INITIAL. " CHANGE case
+    IF ls_a1_hdr-traveler_email IS INITIAL.
+      lv_recipient = gs_a1_hdr-assistant_email.
+    ELSE.
+      lv_recipient = gs_a1_hdr-traveler_email.
+    ENDIF.
+  ELSE.
+*    DELETE case, we can't retrieve assistant email since /nyx/a1_hdr doesn't contain entry
+*    find traveller mail via IT0105
+    CLEAR: lt_p0105.
+    CALL FUNCTION 'HR_READ_INFOTYPE_AUTHC_DISABLE'.
+    CALL FUNCTION 'HR_READ_INFOTYPE'
+      EXPORTING
+        pernr           = gs_a1_hist-pernr
+        infty           = '0105'
+        begda           = sy-datum
+        endda           = sy-datum
+      TABLES
+        infty_tab       = lt_p0105
+      EXCEPTIONS
+        infty_not_found = 1
+        invalid_input   = 2
+        OTHERS          = 3.
+
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+
+    IF lt_p0105 IS NOT INITIAL.
+      CLEAR: ls_p0105.
+      READ TABLE lt_p0105 INTO ls_p0105 WITH KEY subty = '0010'.
+      lv_recipient = ls_p0105-usrid_long.
+    ENDIF.
+  ENDIF.
+
+* Prepare data
+  CLEAR ls_kv.
+  ls_kv-skey = '@PERNR@'.
+  ls_kv-svalue = gs_a1_hist-pernr.
+  APPEND ls_kv TO lt_key_value_param.
+  CLEAR ls_kv.
+  ls_kv-skey = '@DATE@'.
+  CONCATENATE gs_a1_hist-date_from+6(2) gs_a1_hist-date_from+4(2) gs_a1_hist-date_from+0(4) "#EC CI_ALL_FIELDS_NEEDED
+    INTO ls_kv-svalue SEPARATED BY '.'.
+  APPEND ls_kv TO lt_key_value_param.
+  CLEAR ls_kv.
+  ls_kv-skey = '@DESTINATION@'.
+  ls_kv-svalue = gs_a1_hist-land.
+  APPEND ls_kv TO lt_key_value_param.
+  CLEAR ls_kv.
+  ls_kv-skey = '@BD@'.
+  CONCATENATE gs_a1_hist-begda+6(2) gs_a1_hist-begda+4(2) gs_a1_hist-begda+0(4)
+    INTO ls_kv-svalue SEPARATED BY '.'.
+  APPEND ls_kv TO lt_key_value_param.
+  CLEAR ls_kv.
+  ls_kv-skey = '@ED@'.
+  CONCATENATE gs_a1_hist-endda+6(2) gs_a1_hist-endda+4(2) gs_a1_hist-endda+0(4)
+    INTO ls_kv-svalue  SEPARATED BY '.'.
+  APPEND ls_kv TO lt_key_value_param.
+  CLEAR ls_kv.
+  ls_kv-skey = '@A1_URL@'.
+  READ TABLE gt_a1_cgen INTO ls_a1_cgen WITH KEY key2 = '@A1_URL@'.
+  ls_kv-svalue = ls_a1_cgen-value1.
+  APPEND ls_kv TO lt_key_value_param.
+
+* Send Mail
+  /nyx/cl_a1_util=>send_mail(
+    EXPORTING
+      iv_pernr = gs_a1_hist-pernr
+      iv_a1mnr = gs_a1_hist-a1mnr
+      iv_mailtype = 'XXX'
+      is_message = ls_message
+*         it_attachments      = attachments      "
+      iv_sender_uid       = sy-uname
+*         iv_recipient_uid    = recipient_uid    "
+*         iv_sender_mail      = sender_mail      "
+      iv_recipient_mail   = lv_recipient
+*         it_recipients       = recipients
+      iv_send_immediately = 'X'             "
+      it_key_value_param       = lt_key_value_param
+    RECEIVING
+      ev_success          = lv_success
+  ).
+  IF lv_success IS INITIAL.
+    MESSAGE e135(/nyx/a1).
+  ENDIF.
+ENDFORM.  "send_mail_modif
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_RESULT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM display_result .
+  DATA ls_a1_hdr TYPE /nyx/a1_hdr.
+  DATA ls_a1_hist TYPE /nyx/a1_hist.
+
+  IF gt_a1_hdr_draft IS NOT INITIAL.
+    LOOP AT gt_a1_hdr_draft INTO ls_a1_hdr.
+      IF p_mail IS NOT INITIAL.
+        IF sy-tabix = 1.
+          WRITE:/ '****************PRODUKTIVLAUF - ENTWURF****************'.
+        ENDIF.
+        WRITE:/ `Für Pernr ` && ls_a1_hdr-pernr &&  `, A1 Mnr ` &&  ls_a1_hdr-a1mnr
+        && `, Land ` &&  ls_a1_hdr-land && `, von ` && ls_a1_hdr-begda && ` bis ` &&
+        ls_a1_hdr-endda && ` wurde eine E-Mail versendet.`.
+      ELSE.
+        IF sy-tabix = 1.
+          WRITE:/ '****************TESTLAUF - ENTWURF****************'.
+        ENDIF.
+        WRITE:/ `Für Pernr ` && ls_a1_hdr-pernr &&  `, A1 Mnr ` &&  ls_a1_hdr-a1mnr
+        && `, Land ` &&  ls_a1_hdr-land && `, von ` && ls_a1_hdr-begda && ` bis ` &&
+        ls_a1_hdr-endda && ` würde eine E-Mail versendet werden.`.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+
+  CLEAR: ls_a1_hdr, ls_a1_hist.
+  IF gt_a1_hist_modif IS NOT INITIAL.
+    LOOP AT gt_a1_hist_modif INTO ls_a1_hist.
+      IF p_mail IS NOT INITIAL.
+        IF sy-tabix = 1.
+          WRITE:/ '****************PRODUKTIVLAUF - ÄNDERUNG / STORNO****************'.
+        ENDIF.
+        WRITE:/ `Für Pernr ` && ls_a1_hist-pernr &&  `, A1 Mnr ` &&  ls_a1_hist-a1mnr
+        && `, Land ` &&  ls_a1_hist-land && `, von ` && ls_a1_hist-begda && ` bis ` &&
+        ls_a1_hist-endda && ` wurde eine E-Mail versendet.`.
+      ELSE.
+        IF sy-tabix = 1.
+          WRITE:/ '****************TESTLAUF - ÄNDERUNG / STORNO****************'.
+        ENDIF.
+        WRITE:/ `Für Pernr ` && ls_a1_hist-pernr &&  `, A1 Mnr ` &&  ls_a1_hist-a1mnr
+        && `, Land ` &&  ls_a1_hist-land && `, von ` && ls_a1_hist-begda && ` bis ` &&
+        ls_a1_hist-endda && ` würde eine E-Mail versendet werden.`.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+ENDFORM.  "display_result
+*&---------------------------------------------------------------------*
+*&      Form  SEND_MAIL_DRAFT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM send_mail_draft.
+  DATA ls_message TYPE bapiret2.
+  DATA lt_key_value_param TYPE /nyx/a1_key_value_param_tt.
+  DATA ls_kv TYPE /nyx/a1_key_val_param_s.
+  DATA lv_success TYPE char1.
+  DATA lv_recipient TYPE comm_id_long.
+  DATA ls_a1_cgen TYPE /nyx/a1_cgen.
+  DATA ls_bapiret1 TYPE bapiret1.
+
+  IF gs_a1_hdr-traveler_email IS INITIAL.
+    lv_recipient = gs_a1_hdr-assistant_email.
+  ELSE.
+    lv_recipient = gs_a1_hdr-traveler_email.
+  ENDIF.
+* Prepare data
+  CLEAR ls_kv.
+  ls_kv-skey = '@PERNR@'.
+  ls_kv-svalue = gs_a1_hdr-pernr.
+  APPEND ls_kv TO lt_key_value_param.
+  CLEAR ls_kv.
+  ls_kv-skey = '@DATE@'.
+  CONCATENATE gs_a1_hist-date_from+6(2) gs_a1_hist-date_from+4(2) gs_a1_hist-date_from+0(4) "#EC CI_ALL_FIELDS_NEEDED
+    INTO ls_kv-svalue SEPARATED BY '.'.
+  APPEND ls_kv TO lt_key_value_param.
+  CLEAR ls_kv.
+  ls_kv-skey = '@DESTINATION@'.
+  ls_kv-svalue = gs_a1_hdr-land.
+  APPEND ls_kv TO lt_key_value_param.
+  CLEAR ls_kv.
+  ls_kv-skey = '@BD@'.
+  CONCATENATE gs_a1_hdr-begda+6(2) gs_a1_hdr-begda+4(2) gs_a1_hdr-begda+0(4)
+    INTO ls_kv-svalue SEPARATED BY '.'.
+  APPEND ls_kv TO lt_key_value_param.
+  CLEAR ls_kv.
+  ls_kv-skey = '@ED@'.
+  CONCATENATE gs_a1_hdr-endda+6(2) gs_a1_hdr-endda+4(2) gs_a1_hdr-endda+0(4)
+    INTO ls_kv-svalue  SEPARATED BY '.'.
+  APPEND ls_kv TO lt_key_value_param.
+  CLEAR ls_kv.
+  ls_kv-skey = '@A1_URL@'.
+  READ TABLE gt_a1_cgen INTO ls_a1_cgen WITH KEY key2 = '@A1_URL@'.
+  ls_kv-svalue = ls_a1_cgen-value1.
+  APPEND ls_kv TO lt_key_value_param.
+
+* Send Mail
+  /nyx/cl_a1_util=>send_mail(
+    EXPORTING
+      iv_pernr = gs_a1_hdr-pernr
+      iv_a1mnr = gs_a1_hdr-a1mnr
+      iv_mailtype = '089'
+      is_message = ls_message
+*         it_attachments      = attachments      "
+      iv_sender_uid       = sy-uname
+*         iv_recipient_uid    = recipient_uid    "
+*         iv_sender_mail      = sender_mail      "
+      iv_recipient_mail   = lv_recipient
+*         it_recipients       = recipients
+      iv_send_immediately = 'X'             "
+      it_key_value_param       = lt_key_value_param
+    RECEIVING
+      ev_success          = lv_success
+  ).
+  IF lv_success IS INITIAL.
+    MESSAGE e135(/nyx/a1).
+  ENDIF.
+ENDFORM. "send_mail_draft
