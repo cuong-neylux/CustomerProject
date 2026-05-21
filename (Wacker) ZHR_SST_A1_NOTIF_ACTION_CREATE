@@ -448,54 +448,52 @@ FUNCTION ZHR_SST_A1_NOTIF_ACTION_CREATE.
 *      IMPORTING
 *        return_ou = es_return.
 *    RETURN.
+  ENDIF.
 
-      TRY.
-          lt_hdr = /nyx/cl_a1_odata=>get_header_list( iv_pernr = lv_pernr ).
-          LOOP AT lt_hdr INTO ls_hdr WHERE land = ls_request-countrycode AND customer01 CS ls_request-doc_id.
-            IF ls_hdr-begda = ls_request-enddate OR ls_hdr-endda = ls_request-startdate.
-              ls_clusterdata = /nyx/cl_a1_odata=>read_cluster( iv_pernr = ls_hdr-pernr iv_a1mnr = ls_hdr-a1mnr ).
-              IF ls_clusterdata-hdr-status = /nyx/cl_a1_util=>gc_status_approved_int.
+  TRY.
+      lt_hdr = /nyx/cl_a1_odata=>get_header_list( iv_pernr = ls_request-pernr ).
+      LOOP AT lt_hdr INTO ls_hdr WHERE land = ls_request-countrycode AND customer01 CS ls_request-doc_id.
+        ls_clusterdata = /nyx/cl_a1_odata=>read_cluster( iv_pernr = ls_hdr-pernr iv_a1mnr = ls_hdr-a1mnr ).
+        IF ls_clusterdata-hdr-status = /nyx/cl_a1_util=>gc_status_approved_int.
 * Update the start date and end date
-                IF ls_request-startdate <= ls_hdr-begda AND ls_request-enddate >= ls_hdr-begda.
-                  ls_clusterdata-hdr-begda = ls_request-startdate.
-                ENDIF.
+          IF ls_request-startdate <= ls_hdr-begda AND ls_request-enddate >= ls_hdr-begda.
+            ls_clusterdata-hdr-begda = ls_request-startdate.
+          ENDIF.
 
-                IF ls_request-startdate <= ls_hdr-endda AND  ls_request-enddate >= ls_hdr-endda.
-                  ls_clusterdata-hdr-endda = ls_request-enddate.
-                ENDIF.
+          IF ls_request-startdate <= ls_hdr-endda AND  ls_request-enddate >= ls_hdr-endda.
+            ls_clusterdata-hdr-endda = ls_request-enddate.
+          ENDIF.
 
 * Add the destination
-                SORT ls_clusterdata-dest BY bsnr ASCENDING.
-                LOOP AT ls_clusterdata-dest ASSIGNING <dest>.
-                  lv_bsnr = <dest>-bsnr.
-                ENDLOOP.
-                ADD 1 TO lv_bsnr.
-                ls_dest-bsnr = lv_bsnr.
-                ls_dest-pernr = ls_hdr-pernr.
-                ls_dest-a1mnr = ls_hdr-a1mnr.
-                ls_dest-flag_direkt_bs = 'X'.
-                ls_dest-ort_bs = ls_request-ort_bs.
-                ls_dest-plz_bs = ls_request-plz_bs.
-                ls_dest-strasse_bs = ls_request-strasse_bs.
-                ls_dest-hausnr_bs = ls_request-hausnr_bs.
-                ls_dest-name_bs = ls_request-name_bs.
-                APPEND ls_dest TO ls_clusterdata-dest.
+          SORT ls_clusterdata-dest BY bsnr ASCENDING.
+          LOOP AT ls_clusterdata-dest ASSIGNING <dest>.
+            lv_bsnr = <dest>-bsnr.
+          ENDLOOP.
+          ADD 1 TO lv_bsnr.
+          ls_dest-bsnr = lv_bsnr.
+          ls_dest-pernr = ls_hdr-pernr.
+          ls_dest-a1mnr = ls_hdr-a1mnr.
+          ls_dest-flag_direkt_bs = 'X'.
+          ls_dest-ort_bs = ls_request-ort_bs.
+          ls_dest-plz_bs = ls_request-plz_bs.
+          ls_dest-strasse_bs = ls_request-strasse_bs.
+          ls_dest-hausnr_bs = ls_request-hausnr_bs.
+          ls_dest-name_bs = ls_request-name_bs.
+          APPEND ls_dest TO ls_clusterdata-dest.
 
+          ls_clusterdata-hdr-user_action = /nyx/cl_a1_util=>gc_action_submit.
 * Update the A1
-                /nyx/cl_a1_odata=>update_notification( is_data = ls_clusterdata ).
-              ENDIF.
-
-            ENDIF.
-
-          ENDLOOP.
+          /nyx/cl_a1_odata=>update_notification( is_data = ls_clusterdata ).
+          RETURN.
+        ENDIF.
+      ENDLOOP.
 
 
-        CATCH /nyx/cx_a1_exception.
-          LOOP AT /nyx/cl_a1_context=>get_instance( )->get_msg( ) ASSIGNING <msg>.
-            lv_text = <msg>-message.
-          ENDLOOP.
-      ENDTRY.
-  ENDIF.
+    CATCH /nyx/cx_a1_exception.
+      LOOP AT /nyx/cl_a1_context=>get_instance( )->get_msg( ) ASSIGNING <msg>.
+        lv_text = <msg>-message.
+      ENDLOOP.
+  ENDTRY.
 
 ********************************************************************************
 * Do action
@@ -580,28 +578,52 @@ FUNCTION ZHR_SST_A1_NOTIF_ACTION_CREATE.
                 iv_a1mnr = lv_a1mnr
               RECEIVING
                 rt_pdf   = lv_pdf_string.
+* Read A1 header
+  TRY.
+      ls_hdr = /nyx/cl_a1_odata=>get_header( iv_pernr = ls_request-pernr iv_a1mnr = lv_a1mnr ).
+
+* Get the  preview if the status is SUBMITTED
+      IF ls_hdr-status = /nyx/cl_a1_util=>gc_status_approved_int.
+        CALL METHOD /nyx/cl_a1_odata=>get_pdf
+          EXPORTING
+            iv_pernr = ls_request-pernr
+            iv_a1mnr = lv_a1mnr
+          RECEIVING
+            rt_pdf   = lv_pdf_string.
+        IF lv_pdf_string IS NOT INITIAL.
+
+* Convert xstring to table
+          CLEAR: lt_binary, ls_attachment.
+          CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
+            EXPORTING
+              buffer     = lv_pdf_string
+            TABLES
+              binary_tab = lt_binary.
+
+          IF lt_binary IS NOT INITIAL.
+            ls_attachment-cont_hex = lt_binary.
+            ls_attachment-doc_type = 'PDF'.
+            ls_attachment-objtp = 'PDF'.
+            ls_attachment-binary = 'X'.
+            ls_attachment-subject = 'Reise Vorformula'.
+            APPEND ls_attachment TO lt_attachment.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
+    CATCH /nyx/cx_a1_exception.
+      LOOP AT /nyx/cl_a1_context=>get_instance( )->get_msg( ) ASSIGNING <msg>.
+        es_return-message = <msg>-message.
+        RETURN.
+      ENDLOOP.
+
+  ENDTRY.
           CATCH /nyx/cx_a1_exception.
             LOOP AT /nyx/cl_a1_context=>get_instance( )->get_msg( ) ASSIGNING <msg>.
               es_return-message = <msg>-message.
               RETURN.
             ENDLOOP.
         ENDTRY.
-      ENDIF.
-
-* Convert xstring to table
-      CLEAR: lt_binary, ls_attachment.
-      CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
-        EXPORTING
-          BUFFER                = lv_pdf_string
-        TABLES
-          BINARY_TAB            = lt_binary.
-
-      IF lt_binary IS NOT INITIAL.
-        ls_attachment-cont_hex = lt_binary.
-        ls_attachment-doc_type = 'PDF'.
-        ls_attachment-binary = 'X'.
-        ls_attachment-subject = 'Reise Vorformula'.
-        APPEND ls_attachment TO lt_attachment.
       ENDIF.
 
 *     Send Mail
