@@ -9,7 +9,7 @@
 *&
 *&---------------------------------------------------------------------*
 REPORT zhr_sst_a1_control.
-TABLES: pernr.
+TABLES pernr.
 
 INFOTYPES: 0001.
 
@@ -17,6 +17,7 @@ DATA gs_a1_hdr TYPE /nyx/a1_hdr.
 DATA gt_result TYPE TABLE OF zhrsst_a1_1.
 DATA gt_delta TYPE TABLE OF zhrsst_a1_1.
 DATA gt_a1_cstatt TYPE TABLE OF /nyx/a1_cstatt.
+DATA gt_t100 TYPE TABLE OF t100. "msg text table
 
 * Selection screen
 SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
@@ -36,8 +37,10 @@ SELECTION-SCREEN END OF BLOCK b2.
 INITIALIZATION.
 *---------------------------------------------------------------------*
   CLEAR: gt_result, gt_delta.
-  SELECT * FROM /nyx/a1_cstatt INTO TABLE gt_a1_cstatt WHERE endda >= sy-datum.
+  SELECT * FROM /nyx/a1_cstatt INTO TABLE gt_a1_cstatt "#EC "#EC CI_NOFIRST
+     WHERE endda >= sy-datum.                        "#EC "#EC CI_SUBRC
 
+  SELECT * FROM t100 INTO TABLE gt_t100 WHERE arbgb = 'HRPAYDESVA1'.
 *---------------------------------------------------------------------*
 START-OF-SELECTION.
 *---------------------------------------------------------------------*
@@ -70,6 +73,9 @@ END-OF-SELECTION.
 FORM evaluate_a1.
   DATA lt_a1_dest TYPE TABLE OF /nyx/a1_dest.
   DATA ls_a1_dest TYPE /nyx/a1_dest.
+  DATA lt_p01a1_stat TYPE TABLE OF p01a1_stat.
+  DATA ls_p01a1_stat TYPE p01a1_stat.
+  DATA ls_p01a1_dxaa TYPE p01a1_dxaa.
   DATA lt_p01a1_hist TYPE TABLE OF p01a1_hist.
   DATA ls_p01a1_hist TYPE p01a1_hist.
   DATA lt_a1_hdr TYPE TABLE OF /nyx/a1_hdr.
@@ -81,9 +87,15 @@ FORM evaluate_a1.
   DATA ls_result TYPE zhrsst_a1_1.
   DATA ls_zhrsst_a1_1 TYPE zhrsst_a1_1.
   DATA ls_a1_cstatt TYPE /nyx/a1_cstatt.
+  DATA ls_t100 TYPE t100.
 
-  SELECT * FROM /nyx/a1_hist INTO TABLE lt_a1_hist WHERE pernr = pernr-pernr
+  SELECT * FROM /nyx/a1_hist INTO TABLE lt_a1_hist WHERE pernr = pernr-pernr "#EC "#EC CI_SUBRC
                             AND begda >= p_begda AND endda <= p_endda.
+
+  SELECT * FROM p01a1_stat INTO TABLE lt_p01a1_stat WHERE pernr = pernr-pernr "#EC "#EC CI_SUBRC
+                            AND mzbeg >= p_begda AND mzend <= p_endda.
+
+
   SORT lt_a1_hist BY a1mnr prtnr ASCENDING.
 
   CLEAR: ls_a1_hist.
@@ -128,14 +140,17 @@ FORM evaluate_a1.
     ls_result-land = ls_a1_hist_tmp-land.
 
 *   Check if country is selected in selection screen
-    READ TABLE p_land WITH KEY low = ls_result-land.
-    IF sy-subrc <> 0.
-      CONTINUE.
+    IF p_land IS NOT INITIAL.
+      READ TABLE p_land WITH KEY low = ls_result-land.
+      IF sy-subrc <> 0.
+        CONTINUE.
+      ENDIF.
     ENDIF.
 
 *   Trip address
     CLEAR: lt_a1_dest, ls_a1_dest.
-    SELECT * FROM /nyx/a1_dest INTO TABLE lt_a1_dest WHERE a1mnr = ls_a1_hist-a1mnr.
+    SELECT * FROM /nyx/a1_dest INTO TABLE lt_a1_dest "#EC "#EC CI_SUBRC
+      WHERE a1mnr = ls_a1_hist-a1mnr.              "#EC "#EC CI_NOFIRST
     SORT lt_a1_dest BY bsnr ASCENDING.
     IF lt_a1_dest IS NOT INITIAL.
       LOOP AT lt_a1_dest INTO ls_a1_dest.
@@ -159,17 +174,19 @@ FORM evaluate_a1.
 
 *    find the a1 in table header
     CLEAR: lt_a1_hdr, ls_a1_hdr.
-    SELECT SINGLE * FROM /nyx/a1_hdr INTO ls_a1_hdr WHERE a1mnr = ls_a1_hist-a1mnr.
+    SELECT SINGLE * FROM /nyx/a1_hdr                 "#EC "#EC CI_SUBRC
+      INTO ls_a1_hdr                          "#EC CI_ALL_FIELDS_NEEDED
+      WHERE a1mnr = ls_a1_hist-a1mnr.              "#EC "#EC CI_NOFIRST
     IF ls_a1_hist_tmp-status <> 'DELETED'.
 *     A1 Type and filter out not selected A1 type in selection screen
       ls_result-subty = ls_a1_hdr-subty.
-      IF p_dxa1 IS NOT INITIAL AND ls_result-subty <> 'DXA1'.
+      IF p_dxa1 IS INITIAL AND ls_result-subty = 'DXA1'.
         CONTINUE.
       ENDIF.
-      IF p_dxav IS NOT INITIAL AND ls_result-subty <> 'DXAV'.
+      IF p_dxav IS INITIAL AND ls_result-subty = 'DXAV'.
         CONTINUE.
       ENDIF.
-      IF p_dxav IS NOT INITIAL AND ls_result-subty <> 'DXMM'.
+      IF p_dxav IS INITIAL AND ls_result-subty = 'DXMM'.
         CONTINUE.
       ENDIF.
     ELSE.
@@ -184,25 +201,57 @@ FORM evaluate_a1.
         sprsl = sy-langu.
     IF sy-subrc = 0.
       ls_result-a1_nyx_stat_txt = ls_a1_cstatt-text_long.
+    ELSE.
+      IF sy-langu = 'D'.
+        ls_result-a1_nyx_stat_txt = 'A1 wurde gelöscht.'.
+      ELSE.
+        ls_result-a1_nyx_stat_txt = 'A1 was deleted.'.
+      ENDIF.
     ENDIF.
 
 *   who did when the change in neylux A1 manager
     ls_result-a1_nyx_change_user  = ls_a1_hist_tmp-usrid.
     ls_result-a1_nyx_change_date  = ls_a1_hist_tmp-date_from.
-    ls_result-a1_nyx_change_time  = ls_a1_hist_tmp-time_to.
+    ls_result-a1_nyx_change_time  = ls_a1_hist_tmp-time_from.
 
-*   GUID is the ID saved in hist, when A1 request is already issued
+*   GUID is the ID saved in hist, when A1 request is already sent to HI
     IF ls_a1_hist_tmp-guid_cnect IS NOT INITIAL.
-      ls_result-b2a_guid  = ls_a1_hist_tmp-guid_cnect.
+*      get the answer GUID from HI
+      CLEAR ls_p01a1_stat.
+      IF ls_result-a1_nyx_status = 'DELETED'.
+        READ TABLE lt_p01a1_stat INTO ls_p01a1_stat WITH KEY guid_storn = ls_a1_hist_tmp-guid_cnect.
+        IF sy-subrc = 0.
+          ls_result-b2a_guid  = ls_p01a1_stat-guid.
+        ELSE.
+          ls_result-b2a_guid  = ls_a1_hist_tmp-guid_cnect.
+        ENDIF.
+      ELSE.
+        READ TABLE lt_p01a1_stat INTO ls_p01a1_stat WITH KEY guid_cnect = ls_a1_hist_tmp-guid_cnect.
+        IF sy-subrc = 0.
+          ls_result-b2a_guid  = ls_p01a1_stat-guid.
+        ELSE.
+          ls_result-b2a_guid  = ls_a1_hist_tmp-guid_cnect.
+        ENDIF.
+      ENDIF.
       CLEAR: lt_p01a1_hist, ls_p01a1_hist.
-      SELECT * FROM p01a1_hist INTO TABLE lt_p01a1_hist WHERE guid = ls_result-b2a_guid.
+      SELECT * FROM p01a1_hist INTO TABLE lt_p01a1_hist WHERE guid = ls_result-b2a_guid. "#EC "#EC CI_SUBRC
       SORT lt_p01a1_hist BY lfdnr DESCENDING.
       READ TABLE lt_p01a1_hist INTO ls_p01a1_hist INDEX 1.
-*      get status in SAP B2A
+*     get B2A meldungstyp
+      CLEAR: ls_p01a1_stat.
+      READ TABLE lt_p01a1_stat INTO ls_p01a1_stat WITH KEY guid = ls_result-b2a_guid.
+      ls_result-b2a_mdtyp = ls_p01a1_stat-mdtyp.
+      IF ls_result-b2a_mdtyp = '3'. "Ablehnung
+        ls_result-is_reject = abap_true.
+        CLEAR: ls_p01a1_dxaa.
+        SELECT SINGLE * FROM p01a1_dxaa INTO ls_p01a1_dxaa WHERE guid = ls_result-b2a_guid.
+        ls_result-abl_grund = ls_p01a1_dxaa-abl_grund.
+      ENDIF.
+*     get status in SAP B2A
       ls_result-b2a_status = ls_p01a1_hist-status.
 *     get status text of SAP B2A
-      IF sy-langu = 'DE'.
-        CASE ls_result-b2a_stat_txt.
+      IF sy-langu = 'D'.
+        CASE ls_result-b2a_status.
           WHEN '00'.
             ls_result-b2a_stat_txt = 'neu'.
           WHEN '01'.
@@ -213,7 +262,6 @@ FORM evaluate_a1.
             ls_result-b2a_stat_txt = 'beantwortet'.
           WHEN '10'.
             ls_result-b2a_stat_txt =  'abgelehnt'.
-            ls_result-is_reject = abap_true.
           WHEN '12'.
             ls_result-b2a_stat_txt =  'fehlerhaft'.
           WHEN '13'.
@@ -243,7 +291,7 @@ FORM evaluate_a1.
           WHEN OTHERS.
         ENDCASE.
       ELSE.
-        CASE ls_result-b2a_stat_txt.
+        CASE ls_result-b2a_status.
           WHEN '00'.
             ls_result-b2a_stat_txt = 'New'.
           WHEN '01'.
@@ -298,19 +346,27 @@ FORM evaluate_a1.
       ls_result-msgv2 = ls_p01a1_hist-msgv2.
       ls_result-msgv3 = ls_p01a1_hist-msgv3.
       ls_result-msgv4 = ls_p01a1_hist-msgv4.
-      ls_result-text = ls_p01a1_hist-text.
 
-      APPEND ls_result TO gt_result.
+      IF ls_result-msgno IS NOT INITIAL.
+        CLEAR: ls_t100.
+        READ TABLE gt_t100 INTO ls_t100 WITH KEY msgnr = ls_result-msgno
+              sprsl = sy-langu.
+        ls_result-text = ls_t100-text.
+      ENDIF.
 
-      CLEAR: ls_zhrsst_a1_1.
-      SELECT SINGLE * FROM zhrsst_a1_1 INTO ls_zhrsst_a1_1 WHERE pernr = pernr-pernr
-        AND a1mnr = ls_result-a1mnr.
+    ENDIF.
+    APPEND ls_result TO gt_result.
+
+    CLEAR: ls_zhrsst_a1_1.
+    SELECT SINGLE * FROM zhrsst_a1_1 INTO ls_zhrsst_a1_1 "#EC "#EC CI_SUBRC
+       WHERE pernr = pernr-pernr              "#EC CI_ALL_FIELDS_NEEDED
+      AND a1mnr = ls_result-a1mnr.
 
 *     Check with current data in table, if there is difference we will update database table zhrsst_a1_1
-      IF ls_result <> ls_zhrsst_a1_1.
-        APPEND ls_result TO gt_delta.
-      ENDIF.
+    IF ls_result <> ls_zhrsst_a1_1.
+      APPEND ls_result TO gt_delta.
     ENDIF.
+
   ENDLOOP.
 
 ENDFORM.  "evaluate_a1
@@ -345,13 +401,13 @@ FORM display_result .
 * Implement suitable error handling here
   ENDIF.
 
-  LOOP AT lt_fieldcat ASSIGNING <ls_field>.
-    CASE <ls_field>-fieldname.
-      WHEN 'PERNR' OR 'A1MNR'.
-        <ls_field>-key = abap_true.
-      WHEN OTHERS.
-    ENDCASE.
-  ENDLOOP.
+*  LOOP AT lt_fieldcat ASSIGNING <ls_field>.
+*    CASE <ls_field>-fieldname.
+*      WHEN 'PERNR' OR 'A1MNR'.
+*        <ls_field>-key = abap_true.
+*      WHEN OTHERS.
+*    ENDCASE.
+*  ENDLOOP.
 
   CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
     EXPORTING
@@ -384,6 +440,9 @@ ENDFORM.  "display_result
 *  <--  p2        text
 *----------------------------------------------------------------------*
 FORM update_database .
-  MODIFY zhrsst_a1_1 FROM TABLE gt_delta.
+  MODIFY zhrsst_a1_1 FROM TABLE gt_delta.            "#EC "#EC CI_SUBRC
   COMMIT WORK AND WAIT.
 ENDFORM. "update_database
+
+FORM callback_alv.
+ENDFORM.
