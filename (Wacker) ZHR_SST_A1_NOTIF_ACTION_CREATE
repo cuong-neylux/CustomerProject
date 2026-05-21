@@ -567,18 +567,6 @@ FUNCTION ZHR_SST_A1_NOTIF_ACTION_CREATE.
           et_key_value_param = lt_key_value_param.
 
 * Read A1 header
-      ls_hdr = /nyx/cl_a1_odata=>get_header( iv_pernr = lv_pernr iv_a1mnr = lv_a1mnr ).
-
-* Get the  preview if the status is SUBMITTED
-      IF ls_hdr-status = /nyx/cl_a1_util=>gc_status_approved_int.
-        TRY.
-            CALL METHOD /nyx/cl_a1_odata=>get_pdf
-              EXPORTING
-                iv_pernr = lv_pernr
-                iv_a1mnr = lv_a1mnr
-              RECEIVING
-                rt_pdf   = lv_pdf_string.
-* Read A1 header
   TRY.
       ls_hdr = /nyx/cl_a1_odata=>get_header( iv_pernr = ls_request-pernr iv_a1mnr = lv_a1mnr ).
 
@@ -591,7 +579,6 @@ FUNCTION ZHR_SST_A1_NOTIF_ACTION_CREATE.
           RECEIVING
             rt_pdf   = lv_pdf_string.
         IF lv_pdf_string IS NOT INITIAL.
-
 * Convert xstring to table
           CLEAR: lt_binary, ls_attachment.
           CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
@@ -610,7 +597,6 @@ FUNCTION ZHR_SST_A1_NOTIF_ACTION_CREATE.
           ENDIF.
         ENDIF.
       ENDIF.
-
     CATCH /nyx/cx_a1_exception.
       LOOP AT /nyx/cl_a1_context=>get_instance( )->get_msg( ) ASSIGNING <msg>.
         es_return-message = <msg>-message.
@@ -618,13 +604,6 @@ FUNCTION ZHR_SST_A1_NOTIF_ACTION_CREATE.
       ENDLOOP.
 
   ENDTRY.
-          CATCH /nyx/cx_a1_exception.
-            LOOP AT /nyx/cl_a1_context=>get_instance( )->get_msg( ) ASSIGNING <msg>.
-              es_return-message = <msg>-message.
-              RETURN.
-            ENDLOOP.
-        ENDTRY.
-      ENDIF.
 
 *     Send Mail
       /nyx/cl_a1_util=>send_mail(
