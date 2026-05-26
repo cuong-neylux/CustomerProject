@@ -29,6 +29,13 @@ SELECTION-SCREEN END OF BLOCK a.
 *--------------------------------------------------------------------*
 INITIALIZATION.
 *--------------------------------------------------------------------*
+
+  AUTHORITY-CHECK OBJECT 'S_TCODE'
+           ID 'TCD' FIELD 'ZHR_SST_A1_CHECK_3'.
+  IF sy-subrc NE 0 AND sy-sysid NE 'WE5'.
+    MESSAGE e059(eu) WITH 'ZHR_SST_A1_CHECK_3'.  " no authority
+  ENDIF.
+
   CLEAR: gt_req22, gt_a1_hdr_draft.
 
   SELECT * FROM /nyx/a1_cgen                            "#EC CI_NOWHERE
@@ -65,6 +72,7 @@ FORM check_data .
   DATA lt_a1_hist TYPE TABLE OF /nyx/a1_hist.
   DATA ls_a1_hdr TYPE TABLE OF /nyx/a1_hdr.
   DATA ls_req22 TYPE /nyx/sccoreq22v4.
+  DATA ls_req21 TYPE /nyx/sccoreq21v4.
 
   IF p_draft IS NOT INITIAL.
     CLEAR gs_a1_hdr.
@@ -86,7 +94,6 @@ FORM check_data .
   ENDIF.
 
   IF p_modif IS NOT INITIAL.
-    DATA ls_req21 TYPE /nyx/sccoreq21v4.
     CLEAR: gt_a1_hist_modif, lt_a1_hist, ls_req22.
     LOOP AT gt_req22 INTO ls_req22.
       CLEAR: ls_req21, ls_a1_hdr.
@@ -159,21 +166,23 @@ FORM send_mail_modif.
 *    find traveller mail via IT0105
     CLEAR: lt_p0105.
     CALL FUNCTION 'HR_READ_INFOTYPE_AUTHC_DISABLE'.
-    CALL FUNCTION 'HR_READ_INFOTYPE'
-      EXPORTING
-        pernr           = gs_a1_hist-pernr
-        infty           = '0105'
-        begda           = sy-datum
-        endda           = sy-datum
-      TABLES
-        infty_tab       = lt_p0105
-      EXCEPTIONS
-        infty_not_found = 1
-        invalid_input   = 2
-        OTHERS          = 3.
+    IF sy-subrc = 0.
+      CALL FUNCTION 'HR_READ_INFOTYPE'
+        EXPORTING
+          pernr           = gs_a1_hist-pernr
+          infty           = '0105'
+          begda           = sy-datum
+          endda           = sy-datum
+        TABLES
+          infty_tab       = lt_p0105
+        EXCEPTIONS  ""#EC CI_SUBRC
+          infty_not_found = 1 "#EC CI_SUBRC
+          invalid_input   = 2 "#EC CI_SUBRC
+          OTHERS          = 3.  "#EC CI_SUBRC
 
-    IF sy-subrc <> 0.
+      IF sy-subrc <> 0.
 * Implement suitable error handling here
+      ENDIF.
     ENDIF.
 
     IF lt_p0105 IS NOT INITIAL.
