@@ -1,0 +1,263 @@
+*&---------------------------------------------------------------------*
+*& Report ZHR_SST_A1_CHECK_1
+*&-Version-00001-------------------------------------------------------*
+*& Created on: 05.2026
+*& Created by: G.S. neylux GmbH
+*&---------------------------------------------------------------------*
+REPORT zhr_sst_a1_check_1.
+
+*Tables
+TABLES zhrsst_a1_1.
+*Constants
+
+*Data declaration
+DATA gt_dispdata TYPE TABLE OF zhrsst_a1_1_s.
+DATA gv_date TYPE dats.
+DATA gt_reminder TYPE TABLE OF zhrsst_a1_1.
+DATA gt_zhrsst_a1_1 TYPE TABLE OF zhrsst_a1_1.
+DATA ls_zhrsst_a1_1 TYPE zhrsst_a1_1.
+DATA lt_p01a1_hist TYPE TABLE OF p01a1_hist.
+DATA ls__p01a1_hist TYPE p01a1_hist.
+DATA lt_pc01b2a_sv_p_hi TYPE TABLE OF pc01b2a_sv_p_hi.
+DATA ls_pc01b2a_sv_p_hi TYPE pc01b2a_sv_p_hi.
+DATA lv_retcd TYPE sy-subrc.
+DATA zhrsst_a1_2.
+DATA lt_key_value_param TYPE /nyx/a1_key_value_param_tt.
+DATA ls_message TYPE bapiret2.
+DATA lv_success TYPE char1.
+*Selection screen
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+SELECT-OPTIONS s_dates FOR gv_date.
+SELECTION-SCREEN END OF BLOCK b1.
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-002.
+PARAMETERS p_out AS CHECKBOX DEFAULT ''.
+PARAMETERS p_com AS CHECKBOX DEFAULT ''.
+PARAMETERS p_in AS CHECKBOX DEFAULT ''.
+SELECTION-SCREEN END OF BLOCK b2.
+SELECTION-SCREEN BEGIN OF BLOCK b3 WITH FRAME TITLE TEXT-003.
+PARAMETERS p_error AS CHECKBOX DEFAULT ''.
+PARAMETERS p_warn AS CHECKBOX DEFAULT ''.
+SELECTION-SCREEN END OF BLOCK b3.
+SELECTION-SCREEN BEGIN OF BLOCK b4 WITH FRAME TITLE TEXT-004.
+PARAMETERS p_user LIKE suid_st_bname-bname OBLIGATORY.
+PARAMETERS p_mail TYPE comm_id_long OBLIGATORY.
+PARAMETERS p_days TYPE int2 DEFAULT '7'.
+SELECTION-SCREEN END OF BLOCK b4.
+SELECTION-SCREEN BEGIN OF BLOCK b5 WITH FRAME TITLE TEXT-005.
+PARAMETERS p_test AS CHECKBOX DEFAULT 'X'.
+SELECTION-SCREEN END OF BLOCK b5.
+
+
+
+*--------------------------------------------------------------------*
+INITIALIZATION.
+*--------------------------------------------------------------------*
+  AUTHORITY-CHECK OBJECT 'S_TCODE'                  "#EC CI_A086_0001
+           ID 'TCD' FIELD 'ZHR_SST_A1_CHECK_1'.
+  IF sy-subrc NE 0 AND sy-sysid NE 'WE5'.
+    MESSAGE e059(eu) WITH 'ZHR_SST_A1_CHECK_1'.  " no authority
+  ENDIF.
+
+  SELECT * FROM zhrsst_a1_1
+      INTO TABLE gt_zhrsst_a1_1
+      WHERE msgty NE ''.
+*--------------------------------------------------------------------*
+START-OF-SELECTION.
+*--------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*Evaluation process selection
+  IF p_out EQ 'X'.
+    PERFORM check_data_out.
+  ENDIF.
+  IF p_com EQ 'X'.
+    PERFORM check_data_hi.
+  ENDIF.
+  IF p_in EQ 'X'.
+    PERFORM check_data_in.
+  ENDIF.
+*Send mail if the reminder is filled.
+
+  IF p_days IS NOT INITIAL.
+    PERFORM send_mail.
+    PERFORM update_db.
+  ENDIF.
+  PERFORM display_data.
+*--------------------------------------------------------------------*
+END-OF-SELECTION.
+*--------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*&      Form  CHECK_DATA_OUT
+*&---------------------------------------------------------------------*
+* Evaluation 1: Outbound process
+*&---------------------------------------------------------------------*
+FORM check_data_out.
+  IF p_error IS NOT INITIAL.
+    SELECT * FROM p01a1_hist
+      INTO TABLE lt_p01a1_hist
+      WHERE ( msgty = 'E'
+      AND report = 'RPCA1VD0_OUT' )
+      OR ( msgty = 'E'
+      AND report = 'RPCA1HD0_OUT' ).
+  ENDIF.
+  MOVE-CORRESPONDING lt_p01a1_hist TO gt_dispdata.
+  IF p_warn IS NOT INITIAL.
+    SELECT * FROM p01a1_hist
+  INTO TABLE lt_p01a1_hist
+     WHERE  ( msgty = 'W'
+  AND report = 'RPCA1VD0_OUT' )
+       OR   ( msgty = 'W'
+  AND report = 'RPCA1HD0_OUT' ).
+  ENDIF.
+*  MOVE-CORRESPONDING lt_p01a1_hist TO gt_dispdata.
+  CLEAR lt_p01a1_hist.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  CHECK_DATA_HI
+*&---------------------------------------------------------------------*
+*Evaluation 2: Communication to HI
+*&---------------------------------------------------------------------*
+FORM check_data_hi.
+  IF p_error IS NOT INITIAL.
+    SELECT * FROM p01a1_hist
+      INTO TABLE lt_p01a1_hist
+      WHERE msgty = 'E'
+      AND report = 'H99_B2AMANAGER' .
+*  MOVE-CORRESPONDING lt_p01a1_hist TO gt_dispdata.
+
+    SELECT * FROM pc01b2a_sv_p_hi
+         INTO TABLE lt_pc01b2a_sv_p_hi
+         WHERE ( msgty = 'E'
+         AND report = 'RP_PAYDE_B2A_SV_UNPACK' )
+        OR ( msgty = 'E'
+         AND report = 'RP_PAYDE_B2A_SV_COLLECTOR' ).
+    MOVE-CORRESPONDING lt_pc01b2a_sv_p_hi TO gt_dispdata.
+  ENDIF.
+  IF p_warn IS NOT INITIAL.
+    SELECT * FROM p01a1_hist
+        INTO TABLE lt_p01a1_hist
+      WHERE  msgty = 'W'
+      AND report = 'H99_B2AMANAGER' .
+*    MOVE-CORRESPONDING lt_p01a1_hist TO gt_dispdata.
+    CLEAR lt_p01a1_hist.
+
+    SELECT * FROM pc01b2a_sv_p_hi
+       INTO TABLE lt_pc01b2a_sv_p_hi
+       WHERE ( msgty = 'W'
+       AND report = 'RP_PAYDE_B2A_SV_UNPACK' )
+       OR   ( msgty = 'W'
+       AND report = 'RP_PAYDE_B2A_SV_COLLECTOR' ).
+*      MOVE-CORRESPONDING lt_pc01b2a_sv_p_hi TO gt_dispdata.
+    CLEAR lt_pc01b2a_sv_p_hi.
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  CHECK_DATA_IN
+*&---------------------------------------------------------------------*
+*Evaluation 3: Inbound Process
+*&---------------------------------------------------------------------*
+FORM check_data_in.
+  SELECT * FROM p01a1_hist
+    INTO TABLE lt_p01a1_hist
+    WHERE ( msgty = 'E'
+    AND report = 'RPCA1HD0_IN' )
+    OR   ( msgty = 'W'
+    AND report = 'RPCA1HD0_IN' )
+    OR ( msgty = 'E'
+    AND report = 'RPCA1VD0_IN' )
+    OR   ( msgty = 'W'
+    AND report = 'RPCA1VD0_IN' ).
+  MOVE-CORRESPONDING lt_p01a1_hist TO gt_dispdata.
+  CLEAR lt_p01a1_hist.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  SEND_MAIL
+*&---------------------------------------------------------------------*
+FORM send_mail.
+  IF p_out IS NOT INITIAL.
+    /nyx/cl_a1_util=>send_mail(
+      EXPORTING
+        iv_mailtype = '061'
+        is_message = ls_message
+        iv_sender_uid       = p_user
+        iv_recipient_mail   = p_mail
+        iv_send_immediately = 'X'             "
+        it_key_value_param       = lt_key_value_param
+      RECEIVING
+        ev_success          = lv_success
+    ).
+    IF lv_success IS INITIAL.
+      MESSAGE e135(/nyx/a1).
+    ENDIF.
+  ENDIF.
+  IF p_com IS NOT INITIAL.
+    /nyx/cl_a1_util=>send_mail(
+      EXPORTING
+        iv_mailtype = '089'
+        is_message = ls_message
+        iv_sender_uid       = p_user
+        iv_recipient_mail   = p_mail
+        iv_send_immediately = 'X'             "
+        it_key_value_param       = lt_key_value_param
+      RECEIVING
+        ev_success          = lv_success
+    ).
+    IF lv_success IS INITIAL.
+      MESSAGE e135(/nyx/a1).
+    ENDIF.
+  ENDIF.
+  IF p_in IS NOT INITIAL.
+    /nyx/cl_a1_util=>send_mail(
+      EXPORTING
+        iv_mailtype = '063'
+        is_message = ls_message
+        iv_sender_uid       = p_user
+        iv_recipient_mail   = p_mail
+        iv_send_immediately = 'X'             "
+        it_key_value_param       = lt_key_value_param
+      RECEIVING
+        ev_success          = lv_success
+    ).
+    IF lv_success IS INITIAL.
+      MESSAGE e135(/nyx/a1).
+    ENDIF.
+  ENDIF.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_DATA
+*&---------------------------------------------------------------------*
+FORM display_data.
+  IF p_test IS NOT INITIAL.
+*Display output
+    CALL FUNCTION 'DISPLAY_BASIC_LIST'
+      EXPORTING
+        basic_list_title    = 'Display errors'
+        file_name           = ' '
+        head_line1          = ' '
+        data_structure      = 'ZHRSST_A1_1_S'
+      IMPORTING
+        return_code         = lv_retcd
+      TABLES
+        data_tab            = gt_dispdata
+      EXCEPTIONS
+        download_problem    = 1
+        no_data_tab_entries = 2
+        table_mismatch      = 3
+        print_problems      = 4
+        OTHERS              = 5.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+
+  ENDIF.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  UPDATE_DB
+*&---------------------------------------------------------------------*
+FORM update_db.
+  MODIFY zhrsst_a1_1 FROM TABLE gt_reminder.
+  COMMIT WORK AND WAIT.
+ENDFORM.
