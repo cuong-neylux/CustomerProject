@@ -1,0 +1,278 @@
+*&---------------------------------------------------------------------*
+*& Report ZHR_SST_A1_CHECK_1
+*&-Version-00001-------------------------------------------------------*
+*& Created on: 05.2026
+*& Created by: G.S. neylux GmbH
+*&---------------------------------------------------------------------*
+REPORT zhr_sst_a1_check_2.
+
+*Tables
+*Constants
+*Includes
+
+*Data declaration
+TYPES: BEGIN OF ty_display_data,
+         pernr         TYPE pernr_d,
+         name          TYPE emnam,
+         a1mnr         TYPE /nyx/a1_mnr,
+         subty         TYPE subty,
+         endda         TYPE endda,
+         begda         TYPE begda,
+         land          TYPE land1,
+         a1_nyx_status TYPE /nyx/a1_status,
+         b2a_guid      TYPE p01_svguid,
+         b2a_status    TYPE hrpayde_b2a_sv_status_package,
+       END OF ty_display_data.
+DATA ls_display_data TYPE ty_display_data.
+DATA lt_display_data TYPE TABLE OF ty_display_data.
+DATA gv_date TYPE dats.
+DATA lv_retcd TYPE sy-subrc.
+DATA ls_message TYPE bapiret2.
+DATA lv_success TYPE char1.
+DATA lt_a1_hdr TYPE TABLE OF /nyx/a1_hdr.
+DATA ls_a1_hdr TYPE /nyx/a1_hdr.
+DATA lt_p01a1_stat TYPE TABLE OF p01a1_stat.
+DATA ls_p01a1_stat TYPE p01a1_stat.
+DATA ls_variant TYPE disvariant.
+DATA ls_layout TYPE slis_layout_alv.
+DATA lt_fieldcat TYPE slis_t_fieldcat_alv.
+FIELD-SYMBOLS <ls_field> TYPE slis_fieldcat_alv.
+
+*Selection screen
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+PARAMETERS p_begda TYPE begda.
+PARAMETERS p_endda TYPE endda.
+SELECTION-SCREEN END OF BLOCK b1.
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-002.
+PARAMETERS p_pernr TYPE pernr_d OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK b2.
+SELECTION-SCREEN BEGIN OF BLOCK b3 WITH FRAME TITLE TEXT-003.
+PARAMETERS p_dxa1 AS CHECKBOX DEFAULT ''.
+PARAMETERS p_dxav AS CHECKBOX DEFAULT ''.
+PARAMETERS p_dxmm AS CHECKBOX DEFAULT ''.
+SELECTION-SCREEN END OF BLOCK b3.
+SELECTION-SCREEN BEGIN OF BLOCK b4 WITH FRAME TITLE TEXT-004.
+PARAMETERS p_user LIKE suid_st_bname-bname OBLIGATORY.
+PARAMETERS p_mail TYPE comm_id_long OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK b4.
+SELECTION-SCREEN BEGIN OF BLOCK b5 WITH FRAME TITLE TEXT-005.
+PARAMETERS p_test AS CHECKBOX DEFAULT 'X'.
+SELECTION-SCREEN END OF BLOCK b5.
+
+*--------------------------------------------------------------------*
+INITIALIZATION.
+*--------------------------------------------------------------------*
+  AUTHORITY-CHECK OBJECT 'S_TCODE'                    "#EC CI_A086_0001
+           ID 'TCD' FIELD 'ZHR_SST_A1_CHECK_2'.
+  IF sy-subrc NE 0 AND sy-sysid NE 'WE5'.
+    MESSAGE e059(eu) WITH 'ZHR_SST_A1_CHECK_2'.  " no authority
+  ENDIF.
+*--------------------------------------------------------------------*
+START-OF-SELECTION.
+*--------------------------------------------------------------------*
+  PERFORM check_data.
+  IF p_test IS NOT INITIAL.
+    PERFORM send_mail.
+    PERFORM display_data.
+  ENDIF.
+*--------------------------------------------------------------------*
+END-OF-SELECTION.
+
+*&---------------------------------------------------------------------*
+*&      Form  CHECK_DATA
+*&---------------------------------------------------------------------*
+FORM check_data.
+*DXA1 tickbox is clicked
+*Check A1->B2A
+  IF p_dxa1 IS NOT INITIAL.
+    SELECT * FROM /nyx/a1_hdr INTO TABLE lt_a1_hdr
+      WHERE pernr = p_pernr
+      AND begda >= p_begda
+      AND endda <= p_endda
+      AND status = 'APPROVED_B2A'
+      AND subty = 'DXA1'.
+
+    LOOP AT lt_a1_hdr INTO ls_a1_hdr.
+      SELECT * FROM p01a1_stat INTO ls_p01a1_stat     "#EC CI_A822_0001
+        WHERE mzbeg = ls_a1_hdr-begda
+        AND   mzend = ls_a1_hdr-endda
+        AND  guid_cnect = ls_a1_hdr-guid_cnect.
+      ENDSELECT.
+      IF ls_p01a1_stat-mdtyp = '2'
+        AND ls_p01a1_stat-status = '23'.
+      ELSE.
+        ls_display_data = CORRESPONDING #( ls_a1_hdr ).
+        APPEND ls_display_data TO lt_display_data.
+      ENDIF.
+      CLEAR: ls_p01a1_stat, ls_display_data.
+    ENDLOOP.
+    CLEAR: lt_a1_hdr, ls_a1_hdr.
+
+*Check B2A->A1
+    SELECT * FROM p01a1_stat INTO TABLE lt_p01a1_stat
+     WHERE pernr = p_pernr
+     AND mzbeg >= p_begda
+     AND mzend <= p_endda
+     AND   mdtyp = '2'
+     AND   status = '23'.
+
+    LOOP AT lt_p01a1_stat INTO ls_p01a1_stat.
+      SELECT * FROM /nyx/a1_hdr INTO ls_a1_hdr        "#EC CI_A822_0001
+        WHERE begda = ls_p01a1_stat-mzbeg
+        AND   endda = ls_p01a1_stat-mzend
+        AND  guid_cnect = ls_p01a1_stat-guid_cnect
+        AND subty = 'DXA1'.
+      ENDSELECT.
+      IF ls_a1_hdr-status = 'APPROVED_B2A'.
+      ELSE.
+        ls_display_data = CORRESPONDING #( ls_a1_hdr ).
+        APPEND ls_display_data TO lt_display_data.
+      ENDIF.
+      CLEAR: ls_display_data, ls_a1_hdr.
+    ENDLOOP.
+    CLEAR: lt_p01a1_stat, ls_p01a1_stat.
+
+*DXAV tickbox is clicked
+  ELSEIF p_dxav IS NOT INITIAL.
+    SELECT * FROM /nyx/a1_hdr INTO TABLE lt_a1_hdr
+      WHERE pernr = p_pernr
+      AND begda >= p_begda
+      AND endda <= p_endda
+      AND status = 'APPROVED_B2A'
+      AND subty = 'DXAV'.
+
+    LOOP AT lt_a1_hdr INTO ls_a1_hdr.
+      SELECT * FROM p01a1_stat INTO ls_p01a1_stat     "#EC CI_A822_0001
+        WHERE mzbeg = ls_a1_hdr-begda
+        AND   mzend = ls_a1_hdr-endda
+        AND  guid_cnect = ls_a1_hdr-guid_cnect.
+      ENDSELECT.
+      IF ls_p01a1_stat-mdtyp = '2'
+        AND ls_p01a1_stat-status = '23'.
+      ELSE.
+        ls_display_data = CORRESPONDING #( ls_a1_hdr ).
+        APPEND ls_display_data TO lt_display_data.
+      ENDIF.
+      CLEAR: ls_p01a1_stat, ls_display_data.
+    ENDLOOP.
+    CLEAR: lt_a1_hdr, ls_a1_hdr.
+
+*Check B2A->A1
+    SELECT * FROM p01a1_stat INTO TABLE lt_p01a1_stat
+     WHERE pernr = p_pernr
+     AND mzbeg >= p_begda
+     AND mzend <= p_endda
+     AND   mdtyp = '2'
+     AND   status = '23'.
+
+    LOOP AT lt_p01a1_stat INTO ls_p01a1_stat.
+      SELECT * FROM /nyx/a1_hdr INTO ls_a1_hdr        "#EC CI_A822_0001
+        WHERE begda = ls_p01a1_stat-mzbeg
+        AND   endda = ls_p01a1_stat-mzend
+        AND  guid_cnect = ls_p01a1_stat-guid_cnect
+        AND subty = 'DXAV'.
+      ENDSELECT.
+      IF ls_a1_hdr-status = 'APPROVED_B2A'.
+      ELSE.
+        ls_display_data = CORRESPONDING #( ls_a1_hdr ).
+        APPEND ls_display_data TO lt_display_data.
+      ENDIF.
+      CLEAR: ls_display_data, ls_a1_hdr.
+    ENDLOOP.
+    CLEAR: lt_p01a1_stat, ls_p01a1_stat.
+
+*DXMM tickbox is clicked
+  ELSEIF p_dxmm IS NOT INITIAL.
+    SELECT * FROM /nyx/a1_hdr INTO TABLE lt_a1_hdr
+      WHERE pernr = p_pernr
+      AND begda >= p_begda
+      AND endda <= p_endda
+      AND status = 'APPROVED_B2A'
+      AND subty = 'DXMM'.
+
+    LOOP AT lt_a1_hdr INTO ls_a1_hdr.
+      SELECT * FROM p01a1_stat INTO ls_p01a1_stat     "#EC CI_A822_0001
+        WHERE mzbeg = ls_a1_hdr-begda
+        AND   mzend = ls_a1_hdr-endda
+        AND  guid_cnect = ls_a1_hdr-guid_cnect.
+      ENDSELECT.
+      IF ls_p01a1_stat-mdtyp = '2'
+        AND ls_p01a1_stat-status = '23'.
+      ELSE.
+        ls_display_data = CORRESPONDING #( ls_a1_hdr ).
+        APPEND ls_display_data TO lt_display_data.
+      ENDIF.
+      CLEAR: ls_p01a1_stat, ls_display_data.
+    ENDLOOP.
+    CLEAR: lt_a1_hdr, ls_a1_hdr.
+
+*Check B2A->A1
+    SELECT * FROM p01a1_stat INTO TABLE lt_p01a1_stat
+     WHERE pernr = p_pernr
+     AND mzbeg >= p_begda
+     AND mzend <= p_endda
+     AND   mdtyp = '2'
+     AND   status = '23'.
+
+    LOOP AT lt_p01a1_stat INTO ls_p01a1_stat.
+      SELECT * FROM /nyx/a1_hdr INTO ls_a1_hdr        "#EC CI_A822_0001
+        WHERE begda = ls_p01a1_stat-mzbeg
+        AND   endda = ls_p01a1_stat-mzend
+        AND  guid_cnect = ls_p01a1_stat-guid_cnect
+        AND subty = 'DXMM'.
+      ENDSELECT.
+      IF ls_a1_hdr-status = 'APPROVED_B2A'.
+      ELSE.
+        ls_display_data = CORRESPONDING #( ls_a1_hdr ).
+        APPEND ls_display_data TO lt_display_data.
+      ENDIF.
+      CLEAR: ls_display_data, ls_a1_hdr.
+    ENDLOOP.
+    CLEAR: lt_p01a1_stat, ls_p01a1_stat.
+  ENDIF.
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  SEND_MAIL
+*&---------------------------------------------------------------------*
+FORM send_mail.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_DATA
+*&---------------------------------------------------------------------*
+FORM display_data.
+  ls_variant-report = sy-repid.
+
+  CALL FUNCTION 'REUSE_ALV_FIELDCATALOG_MERGE'
+    EXPORTING
+      i_internal_tabname     = 'lt_display_data'
+      i_structure_name       = 'ls_display_data'
+    CHANGING
+      ct_fieldcat            = lt_fieldcat
+    EXCEPTIONS  "#EC CI_SUBRC
+      inconsistent_interface = 1  "#EC CI_SUBRC
+      program_error          = 2  "#EC CI_SUBRC
+      OTHERS                 = 3. "#EC CI_SUBRC
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program      = sy-cprog
+      i_callback_user_command = 'CALLBACK_ALV'
+      i_structure_name        = 'ls_display_data'
+      is_layout               = ls_layout
+      it_fieldcat             = lt_fieldcat
+      i_save                  = 'A'
+      is_variant              = ls_variant
+    TABLES
+      t_outtab                = lt_display_data
+    EXCEPTIONS
+      program_error           = 1
+      OTHERS                  = 2.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+ENDFORM.
