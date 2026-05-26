@@ -7,6 +7,8 @@
 *& Created on: 18.05.2026
 *& Created by: Quynh Ngo, Cuong Luc (neylux GmbH)
 *&
+*& This report gives an overview of all A1 requests in neylux A1 Manager
+*& as well as in SAP B2A
 *&---------------------------------------------------------------------*
 REPORT zhr_sst_a1_control.
 TABLES pernr.
@@ -36,6 +38,13 @@ SELECTION-SCREEN END OF BLOCK b2.
 *---------------------------------------------------------------------*
 INITIALIZATION.
 *---------------------------------------------------------------------*
+  AUTHORITY-CHECK OBJECT 'S_TCODE'                    "#EC CI_A086_0001
+           ID 'TCD' FIELD 'ZHR_SST_A1_CONTROL'.
+  IF sy-subrc NE 0 AND sy-sysid NE 'WE5'.
+    MESSAGE e059(eu) WITH 'ZHR_SST_A1_CONTROL'.  " no authority
+  ENDIF.
+
+
   CLEAR: gt_result, gt_delta.
   SELECT * FROM /nyx/a1_cstatt INTO TABLE gt_a1_cstatt "#EC "#EC CI_NOFIRST
      WHERE endda >= sy-datum.                        "#EC "#EC CI_SUBRC
@@ -381,11 +390,11 @@ ENDFORM.  "evaluate_a1
 FORM display_result .
   DATA ls_variant TYPE disvariant.
   DATA ls_layout TYPE slis_layout_alv.
+  DATA lt_fieldcat TYPE slis_t_fieldcat_alv.
+  FIELD-SYMBOLS <ls_field> TYPE slis_fieldcat_alv.
 
   ls_variant-report = sy-repid.
 
-  DATA lt_fieldcat TYPE slis_t_fieldcat_alv.
-  FIELD-SYMBOLS <ls_field> TYPE slis_fieldcat_alv.
 
   CALL FUNCTION 'REUSE_ALV_FIELDCATALOG_MERGE'
     EXPORTING
@@ -393,10 +402,10 @@ FORM display_result .
       i_structure_name       = 'ZHRSST_A1_1_S'
     CHANGING
       ct_fieldcat            = lt_fieldcat
-    EXCEPTIONS
-      inconsistent_interface = 1
-      program_error          = 2
-      OTHERS                 = 3.
+    EXCEPTIONS  "#EC CI_SUBRC
+      inconsistent_interface = 1  "#EC CI_SUBRC
+      program_error          = 2  "#EC CI_SUBRC
+      OTHERS                 = 3. "#EC CI_SUBRC
   IF sy-subrc <> 0.
 * Implement suitable error handling here
   ENDIF.
