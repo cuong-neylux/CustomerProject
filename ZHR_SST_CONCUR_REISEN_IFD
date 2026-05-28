@@ -1,0 +1,52 @@
+*&---------------------------------------------------------------------*
+*& Report ZHR_SST_CONCUR_REISEN_IFD
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zhr_sst_concur_reisen_ifd.
+
+
+*&---------------------------------------------------------------------*
+*&   Data declaration
+*&---------------------------------------------------------------------*
+
+DATA: gs_aus         TYPE zptm_reisen_cytric_output_d,
+      gt_aus         TYPE TABLE OF zptm_reisen_cytric_output_d,
+      gs_aus_d       TYPE zptm_reisen_cytric_output_d_if,
+      gt_aus_d       TYPE TABLE OF zptm_reisen_cytric_output_d_if,
+      gt_wizzard     TYPE TABLE OF zptm_reisen_cytric_tw_result_d,
+      gs_selection   TYPE zptm_reisen_cytric_selection_d.
+
+
+*&---------------------------------------------------------------------*
+*&   SELECTION-SCREEN
+*&---------------------------------------------------------------------*
+SELECT-OPTIONS: s_pernr  FOR gs_selection-pernr,
+                s_natio  FOR gs_selection-natio,
+                s_short  FOR gs_selection-short,
+*                s_tripno  FOR gs_selection-trip_number,
+                s_req_nr FOR gs_selection-trip_request_nr MODIF ID wiz,
+                s_zland  FOR gs_selection-zland.
+
+SELECT-OPTIONS: s_datv1  FOR gs_selection-datv1,
+                s_datb1  FOR gs_selection-datb1,
+                s_dates  FOR gs_selection-dates,
+                s_timea  FOR gs_selection-timea,
+                s_dauer  FOR gs_selection-dauer MODIF ID dur,
+                s_dantrg FOR gs_selection-dantrg MODIF ID cpl.
+"s_rtart  FOR gs_selection-rtart MODIF ID cpl.
+*                s_exptyp FOR gs_selection-exp_type MODIF ID rec.
+PARAMETERS:     p_twstat  TYPE /ixult/tm_obe_wak_appr_status AS LISTBOX VISIBLE LENGTH 43 MODIF ID wiz.
+SELECTION-SCREEN SKIP.
+
+"PARAMETERS for sftp interface:
+PARAMETERS: p_edi    TYPE abap_bool RADIOBUTTON GROUP 001,
+            "            p_pes    TYPE abap_bool RADIOBUTTON GROUP 002,
+            p_downl  TYPE abap_bool RADIOBUTTON GROUP 001,
+            p_path   TYPE string DEFAULT 'C:\temp',
+            p_filen  TYPE string DEFAULT 'SST_Deloitte.csv',
+            p_downf  TYPE abap_bool RADIOBUTTON GROUP 001 DEFAULT 'X',
+            p_modul  TYPE ys_modulnm DEFAULT 'HR-SF', " YSTRANSP-MODULNAME
+            p_filef  TYPE ys_ftpfile, " YSTRANSP-LFILENAME,
+            p_filep  TYPE ys_ftpfile, " YSTRANSP-LFILENAME,
+            p_nodown TYPE abap_bool RADIOBUTTON GROUP 001.
