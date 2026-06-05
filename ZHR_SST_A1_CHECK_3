@@ -61,9 +61,11 @@ START-OF-SELECTION.
   IF gt_a1_hdr_draft IS NOT INITIAL OR gt_req22 IS NOT INITIAL.
     PERFORM check_data.
   ENDIF.
-  PERFORM display_result.
 
 END-OF-SELECTION.
+
+  PERFORM display_result.
+
 *&---------------------------------------------------------------------*
 *&      Form  CHECK_DATA
 *&---------------------------------------------------------------------*
@@ -108,7 +110,7 @@ FORM check_data .
         READ TABLE lt_a1_hist INTO gs_a1_hist INDEX 1. "#EC CI_ALL_FIELDS_NEEDED
         CASE ls_req22-change_type.
           WHEN 'CHANGE'.
-            IF gs_a1_hist-date_from = ls_req22-eval_date.
+            IF gs_a1_hist-date_from < ls_req22-eval_date.
 *            no change made in A1 Manager
               IF p_mail IS NOT INITIAL.
                 PERFORM send_mail_modif.
@@ -155,7 +157,7 @@ FORM send_mail_modif.
   DATA ls_p0105 TYPE p0105.
 
   SELECT SINGLE * FROM /nyx/a1_hdr INTO ls_a1_hdr WHERE a1mnr = gs_a1_hist-a1mnr.
-  IF ls_a1_hdr IS NOT INITIAL. " CHANGE case
+  IF ls_a1_hdr IS NOT INITIAL. " CHANGE case, gs_a1_hdr is not empty
     IF ls_a1_hdr-traveler_email IS INITIAL.
       lv_recipient = gs_a1_hdr-assistant_email.
     ELSE.
@@ -227,7 +229,7 @@ FORM send_mail_modif.
     EXPORTING
       iv_pernr = gs_a1_hist-pernr
       iv_a1mnr = gs_a1_hist-a1mnr
-      iv_mailtype = 'XXX'
+      iv_mailtype = '066'
       is_message = ls_message
 *         it_attachments      = attachments      "
       iv_sender_uid       = sy-uname
@@ -354,7 +356,7 @@ FORM send_mail_draft.
     EXPORTING
       iv_pernr = gs_a1_hdr-pernr
       iv_a1mnr = gs_a1_hdr-a1mnr
-      iv_mailtype = '089'
+      iv_mailtype = '060'
       is_message = ls_message
 *         it_attachments      = attachments      "
       iv_sender_uid       = sy-uname
