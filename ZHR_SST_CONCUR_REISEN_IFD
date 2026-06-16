@@ -51,6 +51,15 @@ SELECTION-SCREEN BEGIN OF BLOCK a3 WITH FRAME TITLE TEXT-003.
 PARAMETERS p_test AS CHECKBOX DEFAULT 'X'.
 SELECTION-SCREEN END OF BLOCK a3.
 
+*--------------------------------------------------------------------*
+INITIALIZATION.
+*--------------------------------------------------------------------*
+  AUTHORITY-CHECK OBJECT 'S_TCODE'                    "#EC CI_A086_0001
+           ID 'TCD' FIELD 'ZHR_SST_CONCUR_REISE'.
+  IF sy-subrc NE 0.
+    MESSAGE e059(eu) WITH 'ZHR_SST_CONCUR_REISE'.  " no authority
+  ENDIF.
+
 AT SELECTION-SCREEN OUTPUT .
   LOOP AT SCREEN.
     IF p_as IS NOT INITIAL."Save to application server
@@ -101,6 +110,9 @@ AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_asp.
       canceled_by_user = 1
       OTHERS           = 2.
 
+  IF sy-subrc <> 0.
+    MESSAGE ID 'ZHR_SST_CONCUR_MC' TYPE 'E' NUMBER 003.
+  ENDIF.
 * --- START of SELECTION -----------------------------------------------
 START-OF-SELECTION.
 * Create a new object
@@ -127,10 +139,10 @@ FORM fetch_data .
 
 * Get the 'SAVED_0700' trips from /nyx/a1_hdr
   SELECT * FROM /nyx/a1_hdr                   "#EC CI_ALL_FIELDS_NEEDED
-  INTO TABLE lt_a1_hdr.                            "#EC "#EC CI_NOFIELD
+  INTO TABLE lt_a1_hdr.            "#EC "#EC CI_NOFIELD "#EC CI_NOWHERE
 
   IF sy-subrc <> 0.
-    MESSAGE ID 'ZHR_SST_CONCUR_MSG' TYPE 'E' NUMBER 001.
+    MESSAGE ID 'ZHR_SST_CONCUR_MC' TYPE 'E' NUMBER 001.
   ENDIF.
 
 * Filtern the trips based on start date and end date
@@ -465,16 +477,16 @@ FORM generate_csv .
 
   CALL FUNCTION 'SAP_CONVERT_TO_TEX_FORMAT'
     EXPORTING
-      I_FIELD_SEPERATOR    = p_seprat
+      i_field_seperator    = p_seprat
     TABLES
-      I_TAB_SAP_DATA       = gt_aus_final
+      i_tab_sap_data       = gt_aus_final
     CHANGING
-      I_TAB_CONVERTED_DATA = gt_csv_table
+      i_tab_converted_data = gt_csv_table
     EXCEPTIONS
-      CONVERSION_FAILED    = 4.
+      conversion_failed    = 4.
 
   IF sy-subrc <> 0.
-    MESSAGE ID 'ZHR_SST_CONCUR_MSG' TYPE 'E' NUMBER 002.
+    MESSAGE ID 'ZHR_SST_CONCUR_MC' TYPE 'E' NUMBER 002.
     STOP.
   ENDIF.
 
@@ -524,7 +536,7 @@ FORM download_csv_lm .
       data_tab = gt_csv_table.
 
   IF sy-subrc <> 0.
-    MESSAGE ID 'ZHR_SST_CONCUR_MSG' TYPE 'E' NUMBER 001.
+    MESSAGE ID 'ZHR_SST_CONCUR_MC' TYPE 'E' NUMBER 001.
   ELSE.
     WRITE: TEXT-004, /.
   ENDIF.
@@ -550,7 +562,7 @@ FORM save_to_as .
 
   OPEN DATASET gv_filepath FOR OUTPUT IN TEXT MODE ENCODING UTF-8 WITH WINDOWS LINEFEED.
   IF sy-subrc <> 0.
-    MESSAGE ID 'ZHR_SST_CONCUR_MSG' TYPE 'E' NUMBER 002.
+    MESSAGE ID 'ZHR_SST_CONCUR_MC' TYPE 'E' NUMBER 002.
   ENDIF.
   LOOP AT gt_csv_table INTO ls_csv.
     TRANSFER ls_csv TO gv_filepath.
@@ -571,8 +583,9 @@ FORM save_data .
 *TODO: Update the table
     LOOP AT gt_log INTO ls_log.
       MODIFY zhrsst_a1_2 FROM ls_log.
+      COMMIT WORK AND WAIT.
       IF sy-subrc <> 0.
-        MESSAGE ID 'ZHR_SST_CONCUR_MSG' TYPE 'I' NUMBER 005 INTO lv_message.
+        MESSAGE ID 'ZHR_SST_CONCUR_MC' TYPE 'I' NUMBER 005 INTO lv_message.
         WRITE:/ lv_message.
       ENDIF.
     ENDLOOP.
