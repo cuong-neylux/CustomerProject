@@ -1,6 +1,9 @@
 *&---------------------------------------------------------------------*
 *& Report ZHR_SST_A1_CHECK_3
 *&---------------------------------------------------------------------*
+*& Created on: 18.05.2026
+*& Created by: Quynh Ngo (neylux GmbH)
+*&
 *& The report has following functionalities
 *& Send Reminder when the A1 request in A1 manager still in status DRAFT after X days
 *& Send Reminder when cancelled / changed Concur Request hasn't been reflected in
@@ -25,15 +28,14 @@ PARAMETERS p_modif AS CHECKBOX DEFAULT 'X'.
 PARAMETERS p_mail AS CHECKBOX.
 SELECTION-SCREEN END OF BLOCK a.
 
-
 *--------------------------------------------------------------------*
 INITIALIZATION.
 *--------------------------------------------------------------------*
 
   AUTHORITY-CHECK OBJECT 'S_TCODE'
-           ID 'TCD' FIELD 'ZHR_SST_A1_CHECK_3'.
-  IF sy-subrc NE 0 AND sy-sysid NE 'WE5'.
-    MESSAGE e059(eu) WITH 'ZHR_SST_A1_CHECK_3'.  " no authority
+           ID 'TCD' FIELD 'ZHR_A1_REMINDERMAIL'.
+  IF sy-subrc NE 0.
+    MESSAGE e059(eu) WITH 'ZHR_A1_REMINDERMAIL'.  " no authority
   ENDIF.
 
   CLEAR: gt_req22, gt_a1_hdr_draft.
