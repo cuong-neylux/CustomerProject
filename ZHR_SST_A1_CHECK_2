@@ -1,7 +1,7 @@
 *&---------------------------------------------------------------------*
 *& Report ZHR_SST_A1_CHECK_2
-*&-Version-00001-------------------------------------------------------*
-*& Created on: 05.2026
+*&---------------------------------------------------------------------*
+*& Created on: 18.05.2026
 *& Created by: G.S. neylux GmbH
 *&---------------------------------------------------------------------*
 REPORT zhr_sst_a1_check_2.
@@ -36,32 +36,32 @@ DATA ls_variant TYPE disvariant.
 
 *Selection screen
 SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
-  PARAMETERS p_begda TYPE begda.
-  PARAMETERS p_endda TYPE endda.
+PARAMETERS p_begda TYPE begda.
+PARAMETERS p_endda TYPE endda.
 SELECTION-SCREEN END OF BLOCK b1.
 SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-002.
-  PARAMETERS p_pernr TYPE pernr_d OBLIGATORY.
+PARAMETERS p_pernr TYPE pernr_d OBLIGATORY.
 SELECTION-SCREEN END OF BLOCK b2.
 SELECTION-SCREEN BEGIN OF BLOCK b3 WITH FRAME TITLE TEXT-003.
-  PARAMETERS p_dxa1 AS CHECKBOX DEFAULT ''.
-  PARAMETERS p_dxav AS CHECKBOX DEFAULT ''.
-  PARAMETERS p_dxmm AS CHECKBOX DEFAULT ''.
+PARAMETERS p_dxa1 AS CHECKBOX DEFAULT ''.
+PARAMETERS p_dxav AS CHECKBOX DEFAULT ''.
+PARAMETERS p_dxmm AS CHECKBOX DEFAULT ''.
 SELECTION-SCREEN END OF BLOCK b3.
 SELECTION-SCREEN BEGIN OF BLOCK b4 WITH FRAME TITLE TEXT-004.
-  PARAMETERS p_user LIKE suid_st_bname-bname.
-  PARAMETERS p_mail TYPE comm_id_long.
+PARAMETERS p_user LIKE suid_st_bname-bname.
+PARAMETERS p_mail TYPE comm_id_long.
 SELECTION-SCREEN END OF BLOCK b4.
 SELECTION-SCREEN BEGIN OF BLOCK b5 WITH FRAME TITLE TEXT-005.
-  PARAMETERS p_test AS CHECKBOX DEFAULT 'X'.
+PARAMETERS p_test AS CHECKBOX DEFAULT 'X'.
 SELECTION-SCREEN END OF BLOCK b5.
 
 *--------------------------------------------------------------------*
 INITIALIZATION.
 *--------------------------------------------------------------------*
   AUTHORITY-CHECK OBJECT 'S_TCODE'                    "#EC CI_A086_0001
-           ID 'TCD' FIELD 'ZHR_SST_A1_CHECK_2'.
-  IF sy-subrc NE 0 AND sy-sysid NE 'WE5'.
-    MESSAGE e059(eu) WITH 'ZHR_SST_A1_CHECK_2'.  " no authority
+           ID 'TCD' FIELD 'ZHR_A1_ABGLEICHFINAL'.
+  IF sy-subrc NE 0.
+    MESSAGE e059(eu) WITH 'ZHR_A1_ABGLEICHFINAL'.  " no authority
   ENDIF.
 *--------------------------------------------------------------------*
 START-OF-SELECTION.
