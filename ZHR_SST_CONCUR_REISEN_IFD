@@ -55,9 +55,9 @@ SELECTION-SCREEN END OF BLOCK a3.
 INITIALIZATION.
 *--------------------------------------------------------------------*
   AUTHORITY-CHECK OBJECT 'S_TCODE'                    "#EC CI_A086_0001
-           ID 'TCD' FIELD 'ZHR_SST_CONCUR_REISE'.
+           ID 'TCD' FIELD 'ZHR_A1_CSV'.
   IF sy-subrc NE 0.
-    MESSAGE e059(eu) WITH 'ZHR_SST_CONCUR_REISE'.  " no authority
+    MESSAGE e059(eu) WITH 'ZHR_A1_CSV'.  " no authority
   ENDIF.
 
 AT SELECTION-SCREEN OUTPUT .
