@@ -1,8 +1,13 @@
 *&---------------------------------------------------------------------*
 *& Report ZHR_SST_A1_CHECK_1
-*&-Version-00001-------------------------------------------------------*
-*& Created on: 05.2026
-*& Created by: G.S. neylux GmbH
+*&---------------------------------------------------------------------*
+*& Created on: 18.05.2026
+*& Created by: Quynh Ngo (neylux GmbH)´
+*&
+*& This report has following functionalities
+*&  - Check error / warning in B2A process (Inbound / Communication to HI / Outbound)
+*&  - Send mail defined address / traveller
+*&  - And update table ZHRSST_A1_A1
 *&---------------------------------------------------------------------*
 REPORT zhr_sst_a1_check_1.
 
@@ -51,19 +56,19 @@ SELECTION-SCREEN END OF BLOCK b5.
 *--------------------------------------------------------------------*
 INITIALIZATION.
 *--------------------------------------------------------------------*
-  CLEAR: gt_result_out, gt_result_in, gt_result_com, gt_p01a1_stat, gt_p01a1_hist.
-
-*  AUTHORITY-CHECK OBJECT 'S_TCODE'                  "#EC CI_A086_0001
-*           ID 'TCD' FIELD 'ZHR_SST_A1_CHECK_1'.
-*  IF sy-subrc NE 0 AND sy-sysid NE 'WE5'.
-*    MESSAGE e059(eu) WITH 'ZHR_SST_A1_CHECK_1'.  " no authority
-*  ENDIF.
+  AUTHORITY-CHECK OBJECT 'S_TCODE'                    "#EC CI_A086_0001
+           ID 'TCD' FIELD 'ZHR_A1_FEHLERMAIL'.
+  IF sy-subrc NE 0.
+    MESSAGE e059(eu) WITH 'ZHR_A1_FEHLERMAIL'.  " no authority
+  ENDIF.
 
 
 *--------------------------------------------------------------------*
 START-OF-SELECTION.
 *--------------------------------------------------------------------*
 *&---------------------------------------------------------------------*
+  CLEAR: gt_result_out, gt_result_in, gt_result_com, gt_p01a1_stat, gt_p01a1_hist.
+
   CONDENSE p_user NO-GAPS.
   CONDENSE p_mail NO-GAPS.
   gv_rem_date = sy-datum - p_days.
@@ -293,13 +298,12 @@ FORM send_mail USING iv_day.
                 infty_not_found = 1
                 invalid_input   = 2
                 OTHERS          = 3.
-            IF sy-subrc <> 0.
-*       Implement suitable error handling here
-            ENDIF.
-            IF lt_p0105 IS NOT INITIAL.
-              READ TABLE lt_p0105 INTO ls_p0105 WITH KEY subty = '0010'.
-              IF ls_p0105 IS NOT INITIAL.
-                lv_mail = ls_p0105-usrid_long.
+            IF sy-subrc = 0.
+              IF lt_p0105 IS NOT INITIAL.
+                READ TABLE lt_p0105 INTO ls_p0105 WITH KEY subty = '0010'.
+                IF ls_p0105 IS NOT INITIAL.
+                  lv_mail = ls_p0105-usrid_long.
+                ENDIF.
               ENDIF.
             ENDIF.
           ENDIF.
@@ -424,38 +428,39 @@ FORM send_mail USING iv_day.
                   infty_not_found = 1
                   invalid_input   = 2
                   OTHERS          = 3.
-              IF sy-subrc <> 0.
-*       Implement suitable error handling here
-              ENDIF.
-              IF lt_p0105 IS NOT INITIAL.
-                READ TABLE lt_p0105 INTO ls_p0105 WITH KEY subty = '0010'.
-                IF ls_p0105 IS NOT INITIAL.
-                  lv_mail = ls_p0105-usrid_long.
+              IF sy-subrc = 0.
+
+                IF lt_p0105 IS NOT INITIAL.
+                  READ TABLE lt_p0105 INTO ls_p0105 WITH KEY subty = '0010'.
+                  IF ls_p0105 IS NOT INITIAL.
+                    lv_mail = ls_p0105-usrid_long.
+                  ENDIF.
                 ENDIF.
               ENDIF.
             ENDIF.
+          ENDIF.
 *             prepare data
-            PERFORM prepare_data  USING ls_result CHANGING lt_key_value_param.
+          PERFORM prepare_data  USING ls_result CHANGING lt_key_value_param.
 
-            IF gt_result_mail IS NOT INITIAL.
-              /nyx/cl_a1_util=>send_mail(
-                EXPORTING
-                  iv_mailtype = '062'
-                  is_message = ls_message
-                  iv_sender_uid       = p_user
-                  iv_recipient_mail   = ls_p0105-usrid_long
-                  iv_send_immediately = 'X'             "
-                  it_key_value_param = lt_key_value_param
-                RECEIVING
-                  ev_success          = lv_success
-              ).
-              IF lv_success IS INITIAL.
-                MESSAGE e135(/nyx/a1).
-              ELSE.
-                PERFORM update_db USING 'R'.
-              ENDIF.
+          IF gt_result_mail IS NOT INITIAL.
+            /nyx/cl_a1_util=>send_mail(
+              EXPORTING
+                iv_mailtype = '062'
+                is_message = ls_message
+                iv_sender_uid       = p_user
+                iv_recipient_mail   = ls_p0105-usrid_long
+                iv_send_immediately = 'X'             "
+                it_key_value_param = lt_key_value_param
+              RECEIVING
+                ev_success          = lv_success
+            ).
+            IF lv_success IS INITIAL.
+              MESSAGE e135(/nyx/a1).
+            ELSE.
+              PERFORM update_db USING 'R'.
             ENDIF.
           ENDIF.
+
         ENDLOOP.
       ENDIF.
     ENDIF.
