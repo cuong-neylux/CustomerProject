@@ -3,7 +3,6 @@
 *&---------------------------------------------------------------------*
 *&
 *&---------------------------------------------------------------------*
-*&-Version-00001-------------------------------------------------------*
 *& Created on: 18.05.2026
 *& Created by: Quynh Ngo, Cuong Luc (neylux GmbH)
 *&
@@ -38,11 +37,11 @@ SELECTION-SCREEN END OF BLOCK b2.
 *---------------------------------------------------------------------*
 INITIALIZATION.
 *---------------------------------------------------------------------*
-*  AUTHORITY-CHECK OBJECT 'S_TCODE'                    "#EC CI_A086_0001
-*           ID 'TCD' FIELD 'ZHR_SST_A1_CONTROL'.
-*  IF sy-subrc NE 0 AND sy-sysid NE 'WE5'.
-*    MESSAGE e059(eu) WITH 'ZHR_SST_A1_CONTROL'.  " no authority
-*  ENDIF.
+  AUTHORITY-CHECK OBJECT 'S_TCODE'                    "#EC CI_A086_0001
+           ID 'TCD' FIELD 'ZHR_A1_KONTROLLE'.
+  IF sy-subrc NE 0.
+    MESSAGE e059(eu) WITH 'ZHR_A1_KONTROLLE'.  " no authority
+  ENDIF.
 
 
   CLEAR: gt_result, gt_delta.
@@ -255,127 +254,128 @@ FORM evaluate_a1.
 **       get B2A meldungstyp
 *        ls_result-b2a_mdtyp = ls_p01a1_stat-mdtyp.
       ENDIF.
-      CLEAR: lt_p01a1_hist, ls_p01a1_hist.
-      SELECT * FROM p01a1_hist INTO TABLE lt_p01a1_hist WHERE guid = ls_result-b2a_guid. "#EC "#EC CI_SUBRC
-      SORT lt_p01a1_hist BY lfdnr DESCENDING.
-      READ TABLE lt_p01a1_hist INTO ls_p01a1_hist INDEX 1.
+    ENDIF.
+    CLEAR: lt_p01a1_hist, ls_p01a1_hist.
+    SELECT * FROM p01a1_hist INTO TABLE lt_p01a1_hist WHERE guid = ls_result-b2a_guid. "#EC "#EC CI_SUBRC
+    SORT lt_p01a1_hist BY lfdnr DESCENDING.
+    READ TABLE lt_p01a1_hist INTO ls_p01a1_hist INDEX 1.
 *     get B2A meldungstyp
 *      CLEAR: ls_p01a1_stat.
 *      READ TABLE lt_p01a1_stat INTO ls_p01a1_stat WITH KEY guid = ls_result-b2a_guid.
-      ls_result-b2a_mdtyp = ls_p01a1_stat-mdtyp.
-      IF ls_result-b2a_mdtyp = '3'. "Ablehnung
-        ls_result-is_reject = abap_true.
-        CLEAR: ls_p01a1_dxaa.
-        SELECT SINGLE * FROM p01a1_dxaa INTO ls_p01a1_dxaa WHERE guid = ls_result-b2a_guid.
-        ls_result-abl_grund = ls_p01a1_dxaa-abl_grund.
-      ENDIF.
+    ls_result-b2a_mdtyp = ls_p01a1_stat-mdtyp.
+    IF ls_result-b2a_mdtyp = '3'. "Ablehnung
+      ls_result-is_reject = abap_true.
+      CLEAR: ls_p01a1_dxaa.
+      SELECT SINGLE * FROM p01a1_dxaa INTO ls_p01a1_dxaa WHERE guid = ls_result-b2a_guid.
+      ls_result-abl_grund = ls_p01a1_dxaa-abl_grund.
+    ENDIF.
 *     get status in SAP B2A
-      ls_result-b2a_status = ls_p01a1_hist-status.
+    ls_result-b2a_status = ls_p01a1_hist-status.
 *     get status text of SAP B2A
-      IF sy-langu = 'D'.
-        CASE ls_result-b2a_status.
-          WHEN '00'.
-            ls_result-b2a_stat_txt = 'neu'.
-          WHEN '01'.
-            ls_result-b2a_stat_txt = 'übertragen'.
-          WHEN '03'.
-            ls_result-b2a_stat_txt = 'zu übertragen'.
-          WHEN '07'.
-            ls_result-b2a_stat_txt = 'beantwortet'.
-          WHEN '10'.
-            ls_result-b2a_stat_txt =  'abgelehnt'.
-          WHEN '12'.
-            ls_result-b2a_stat_txt =  'fehlerhaft'.
-          WHEN '13'.
-            ls_result-b2a_stat_txt = 'manuell übertragen'.
-          WHEN '20'.
-            ls_result-b2a_stat_txt = 'empfangen'.
-          WHEN '21'.
-            ls_result-b2a_stat_txt = 'abzulehnen'.
-          WHEN '22'.
-            ls_result-b2a_stat_txt = 'zu verarbeiten'.
-          WHEN '23'.
-            ls_result-b2a_stat_txt = 'verarbeitet'.
-          WHEN '32'.
-            ls_result-b2a_stat_txt = 'zu prüfen'.
-          WHEN '33'.
-            ls_result-b2a_stat_txt = 'manuell verarbeitet'.
-          WHEN '34'.
-            ls_result-b2a_stat_txt = 'nicht zugeordnet'.
-          WHEN '60'.
-            ls_result-b2a_stat_txt = 'geprüft'.
-          WHEN '61'.
-            ls_result-b2a_stat_txt = 'quittiert'.
-          WHEN '62'.
-            ls_result-b2a_stat_txt = 'angenommen'.
-          WHEN '80'.
-            ls_result-b2a_stat_txt = 'geprüft'.
-          WHEN OTHERS.
-        ENDCASE.
-      ELSE.
-        CASE ls_result-b2a_status.
-          WHEN '00'.
-            ls_result-b2a_stat_txt = 'New'.
-          WHEN '01'.
-            ls_result-b2a_stat_txt = 'Transferred'.
-          WHEN '03'.
-            ls_result-b2a_stat_txt = 'To Be Transferred'.
-          WHEN '07'.
-            ls_result-b2a_stat_txt = 'Answered'.
-          WHEN '10'.
-            ls_result-b2a_stat_txt = 'Rejected'.
-            ls_result-is_reject = abap_true.
-          WHEN '12'.
-            ls_result-b2a_stat_txt = 'With Errors'.
-          WHEN '13'.
-            ls_result-b2a_stat_txt = 'Transferred Manually'.
-          WHEN '20'.
-            ls_result-b2a_stat_txt = 'Received'.
-          WHEN '21'.
-            ls_result-b2a_stat_txt = 'To Be Rejected'.
-          WHEN '22'.
-            ls_result-b2a_stat_txt = 'For Processing'.
-          WHEN '23'.
-            ls_result-b2a_stat_txt = 'Processed'.
-          WHEN '32'.
-            ls_result-b2a_stat_txt = 'To Be Checked'.
-          WHEN '33'.
-            ls_result-b2a_stat_txt = 'Processed Manually'.
-          WHEN '34'.
-            ls_result-b2a_stat_txt = 'Not Assigned'.
-          WHEN '60'.
-            ls_result-b2a_stat_txt = 'Checked'.
-          WHEN '61'.
-            ls_result-b2a_stat_txt = 'Confirmed'.
-          WHEN '62'.
-            ls_result-b2a_stat_txt = 'Accepted'.
-          WHEN '80'.
-            ls_result-b2a_stat_txt = 'Checked'.
-          WHEN OTHERS.
-        ENDCASE.
-      ENDIF.
+    IF sy-langu = 'D'.
+      CASE ls_result-b2a_status.
+        WHEN '00'.
+          ls_result-b2a_stat_txt = 'neu'.
+        WHEN '01'.
+          ls_result-b2a_stat_txt = 'übertragen'.
+        WHEN '03'.
+          ls_result-b2a_stat_txt = 'zu übertragen'.
+        WHEN '07'.
+          ls_result-b2a_stat_txt = 'beantwortet'.
+        WHEN '10'.
+          ls_result-b2a_stat_txt =  'abgelehnt'.
+        WHEN '12'.
+          ls_result-b2a_stat_txt =  'fehlerhaft'.
+        WHEN '13'.
+          ls_result-b2a_stat_txt = 'manuell übertragen'.
+        WHEN '20'.
+          ls_result-b2a_stat_txt = 'empfangen'.
+        WHEN '21'.
+          ls_result-b2a_stat_txt = 'abzulehnen'.
+        WHEN '22'.
+          ls_result-b2a_stat_txt = 'zu verarbeiten'.
+        WHEN '23'.
+          ls_result-b2a_stat_txt = 'verarbeitet'.
+        WHEN '32'.
+          ls_result-b2a_stat_txt = 'zu prüfen'.
+        WHEN '33'.
+          ls_result-b2a_stat_txt = 'manuell verarbeitet'.
+        WHEN '34'.
+          ls_result-b2a_stat_txt = 'nicht zugeordnet'.
+        WHEN '60'.
+          ls_result-b2a_stat_txt = 'geprüft'.
+        WHEN '61'.
+          ls_result-b2a_stat_txt = 'quittiert'.
+        WHEN '62'.
+          ls_result-b2a_stat_txt = 'angenommen'.
+        WHEN '80'.
+          ls_result-b2a_stat_txt = 'geprüft'.
+        WHEN OTHERS.
+      ENDCASE.
+    ELSE.
+      CASE ls_result-b2a_status.
+        WHEN '00'.
+          ls_result-b2a_stat_txt = 'New'.
+        WHEN '01'.
+          ls_result-b2a_stat_txt = 'Transferred'.
+        WHEN '03'.
+          ls_result-b2a_stat_txt = 'To Be Transferred'.
+        WHEN '07'.
+          ls_result-b2a_stat_txt = 'Answered'.
+        WHEN '10'.
+          ls_result-b2a_stat_txt = 'Rejected'.
+          ls_result-is_reject = abap_true.
+        WHEN '12'.
+          ls_result-b2a_stat_txt = 'With Errors'.
+        WHEN '13'.
+          ls_result-b2a_stat_txt = 'Transferred Manually'.
+        WHEN '20'.
+          ls_result-b2a_stat_txt = 'Received'.
+        WHEN '21'.
+          ls_result-b2a_stat_txt = 'To Be Rejected'.
+        WHEN '22'.
+          ls_result-b2a_stat_txt = 'For Processing'.
+        WHEN '23'.
+          ls_result-b2a_stat_txt = 'Processed'.
+        WHEN '32'.
+          ls_result-b2a_stat_txt = 'To Be Checked'.
+        WHEN '33'.
+          ls_result-b2a_stat_txt = 'Processed Manually'.
+        WHEN '34'.
+          ls_result-b2a_stat_txt = 'Not Assigned'.
+        WHEN '60'.
+          ls_result-b2a_stat_txt = 'Checked'.
+        WHEN '61'.
+          ls_result-b2a_stat_txt = 'Confirmed'.
+        WHEN '62'.
+          ls_result-b2a_stat_txt = 'Accepted'.
+        WHEN '80'.
+          ls_result-b2a_stat_txt = 'Checked'.
+        WHEN OTHERS.
+      ENDCASE.
+    ENDIF.
 
 *     who did when the change in SAP B2A component
-      ls_result-b2a_change_report = ls_p01a1_hist-report.
-      ls_result-b2a_change_user = ls_p01a1_hist-euser.
-      ls_result-b2a_change_date = ls_p01a1_hist-datum.
-      ls_result-b2a_change_time = ls_p01a1_hist-uzeit.
+    ls_result-b2a_change_report = ls_p01a1_hist-report.
+    ls_result-b2a_change_user = ls_p01a1_hist-euser.
+    ls_result-b2a_change_date = ls_p01a1_hist-datum.
+    ls_result-b2a_change_time = ls_p01a1_hist-uzeit.
 *     All error relevant info in neylux A1 / B2A is saved here
-      ls_result-msgty = ls_p01a1_hist-msgty.
-      ls_result-msgid = ls_p01a1_hist-msgid.
-      ls_result-msgno = ls_p01a1_hist-msgno.
-      ls_result-msgv1 = ls_p01a1_hist-msgv1.
-      ls_result-msgv2 = ls_p01a1_hist-msgv2.
-      ls_result-msgv3 = ls_p01a1_hist-msgv3.
-      ls_result-msgv4 = ls_p01a1_hist-msgv4.
+    ls_result-msgty = ls_p01a1_hist-msgty.
+    ls_result-msgid = ls_p01a1_hist-msgid.
+    ls_result-msgno = ls_p01a1_hist-msgno.
+    ls_result-msgv1 = ls_p01a1_hist-msgv1.
+    ls_result-msgv2 = ls_p01a1_hist-msgv2.
+    ls_result-msgv3 = ls_p01a1_hist-msgv3.
+    ls_result-msgv4 = ls_p01a1_hist-msgv4.
 
-      IF ls_result-msgno IS NOT INITIAL.
-        CLEAR: ls_t100.
-        READ TABLE gt_t100 INTO ls_t100 WITH KEY msgnr = ls_result-msgno
-              sprsl = sy-langu.
-        ls_result-text = ls_t100-text.
-      ENDIF.
+    IF ls_result-msgno IS NOT INITIAL.
+      CLEAR: ls_t100.
+      READ TABLE gt_t100 INTO ls_t100 WITH KEY msgnr = ls_result-msgno
+            sprsl = sy-langu.
+      ls_result-text = ls_t100-text.
     ENDIF.
+
     APPEND ls_result TO gt_result.
 
     CLEAR: ls_zhrsst_a1_1.
@@ -400,59 +400,82 @@ ENDFORM.  "evaluate_a1
 *  <--  p2        text
 *----------------------------------------------------------------------*
 FORM display_result .
-  DATA ls_variant TYPE disvariant.
-  DATA ls_layout TYPE slis_layout_alv.
-  DATA lt_fieldcat TYPE slis_t_fieldcat_alv.
-  FIELD-SYMBOLS <ls_field> TYPE slis_fieldcat_alv.
+*  DATA ls_variant TYPE disvariant.
+*  DATA ls_layout TYPE slis_layout_alv.
+*  DATA lt_fieldcat TYPE slis_t_fieldcat_alv.
+*  FIELD-SYMBOLS <ls_field> TYPE slis_fieldcat_alv.
+*
+*  ls_variant-report = sy-repid.
+*
+*
+*
+*
+*  CALL FUNCTION 'REUSE_ALV_FIELDCATALOG_MERGE'
+*    EXPORTING
+*      i_internal_tabname     = 'GT_RESULT'
+*      i_structure_name       = 'ZHRSST_A1_1_S'
+*    CHANGING
+*      ct_fieldcat            = lt_fieldcat
+*    EXCEPTIONS  "#EC CI_SUBRC
+*      inconsistent_interface = 1  "#EC CI_SUBRC
+*      program_error          = 2  "#EC CI_SUBRC
+*      OTHERS                 = 3. "#EC CI_SUBRC
+*  IF sy-subrc <> 0.
+** Implement suitable error handling here
+*  ENDIF.
+*
+**  LOOP AT lt_fieldcat ASSIGNING <ls_field>.
+**    CASE <ls_field>-fieldname.
+**      WHEN 'PERNR' OR 'A1MNR'.
+**        <ls_field>-key = abap_true.
+**      WHEN OTHERS.
+**    ENDCASE.
+**  ENDLOOP.
+*
+*  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+*    EXPORTING
+*      i_callback_program      = sy-cprog
+**      i_callback_user_command = 'CALLBACK_ALV'
+*      i_structure_name        = 'ZHRSST_A1_1_S'
+*      is_layout               = ls_layout
+*      it_fieldcat             = lt_fieldcat
+*      i_save                  = 'A'
+*      is_variant              = ls_variant
+** IMPORTING
+**     E_EXIT_CAUSED_BY_CALLER =
+**     ES_EXIT_CAUSED_BY_USER  =
+*    TABLES
+*      t_outtab                = gt_result
+*    EXCEPTIONS
+*      program_error           = 1
+*      OTHERS                  = 2.
+*  IF sy-subrc <> 0.
+** Implement suitable error handling here
+*  ENDIF.
 
-  ls_variant-report = sy-repid.
-
-
-
-
-  CALL FUNCTION 'REUSE_ALV_FIELDCATALOG_MERGE'
-    EXPORTING
-      i_internal_tabname     = 'GT_RESULT'
-      i_structure_name       = 'ZHRSST_A1_1_S'
-    CHANGING
-      ct_fieldcat            = lt_fieldcat
-    EXCEPTIONS  "#EC CI_SUBRC
-      inconsistent_interface = 1  "#EC CI_SUBRC
-      program_error          = 2  "#EC CI_SUBRC
-      OTHERS                 = 3. "#EC CI_SUBRC
-  IF sy-subrc <> 0.
-* Implement suitable error handling here
+  DATA lv_retcd TYPE sy-subrc.
+*Display output
+  IF gt_result IS NOT INITIAL.
+    CALL FUNCTION 'DISPLAY_BASIC_LIST'
+      EXPORTING
+        basic_list_title    = 'Display errors'
+        file_name           = ' '
+        head_line1          = ' '
+        data_structure      = 'ZHRSST_A1_1_S'
+      IMPORTING
+        return_code         = lv_retcd
+      TABLES
+        data_tab            = gt_result
+      EXCEPTIONS
+        download_problem    = 1
+        no_data_tab_entries = 2
+        table_mismatch      = 3
+        print_problems      = 4
+        OTHERS              = 5.
+    IF sy-subrc <> 0.
+      WRITE:/ 'error when displaying data' && sy-subrc.
+    ENDIF.
   ENDIF.
-
-*  LOOP AT lt_fieldcat ASSIGNING <ls_field>.
-*    CASE <ls_field>-fieldname.
-*      WHEN 'PERNR' OR 'A1MNR'.
-*        <ls_field>-key = abap_true.
-*      WHEN OTHERS.
-*    ENDCASE.
-*  ENDLOOP.
-
-  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
-    EXPORTING
-      i_callback_program      = sy-cprog
-      i_callback_user_command = 'CALLBACK_ALV'
-      i_structure_name        = 'ZHRSST_A1_1_S'
-      is_layout               = ls_layout
-      it_fieldcat             = lt_fieldcat
-      i_save                  = 'A'
-      is_variant              = ls_variant
-* IMPORTING
-*     E_EXIT_CAUSED_BY_CALLER =
-*     ES_EXIT_CAUSED_BY_USER  =
-    TABLES
-      t_outtab                = gt_result
-    EXCEPTIONS
-      program_error           = 1
-      OTHERS                  = 2.
-  IF sy-subrc <> 0.
-* Implement suitable error handling here
-  ENDIF.
-
 ENDFORM.  "display_result
 *&---------------------------------------------------------------------*
 *&      Form  UPDATE_DATABASE
@@ -467,5 +490,5 @@ FORM update_database .
   COMMIT WORK AND WAIT.
 ENDFORM. "update_database
 
-FORM callback_alv.
-ENDFORM.
+*FORM callback_alv.
+*ENDFORM.
